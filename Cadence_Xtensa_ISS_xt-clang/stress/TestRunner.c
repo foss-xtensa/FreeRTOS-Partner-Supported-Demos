@@ -345,6 +345,7 @@ static void prvCheckTask( void *pvParameters )
 {
 TickType_t xNextWakeTime;
 const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
+uint32_t xTestMask = 0;
 
 	/* Silence compiler warnings about unused variables. */
 	( void ) pvParameters;
@@ -359,6 +360,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_TASK_NOTIFY_TESTS == 1 )
 		{
+			xTestMask |= 0x1;
 			if( xAreTaskNotificationTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error:  Notification";
@@ -368,6 +370,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_TASK_NOTIFY_ARRAY_TESTS == 1 )
 		{
+			xTestMask |= 0x2;
 			if( xAreTaskNotificationArrayTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error:  Notification Array";
@@ -377,6 +380,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_BLOCKING_QUEUE_TESTS == 1 )
 		{
+			xTestMask |= 0x4;
 			if( xAreBlockingQueuesStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: BlockQueue";
@@ -386,6 +390,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_SEMAPHORE_TESTS == 1 )
 		{
+			xTestMask |= 0x8;
 			if( xAreSemaphoreTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: SemTest";
@@ -395,6 +400,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_POLLED_QUEUE_TESTS == 1 )
 		{
+			xTestMask |= 0x10;
 			if( xArePollingQueuesStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: PollQueue";
@@ -404,6 +410,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_INTEGER_MATH_TESTS == 1 )
 		{
+			xTestMask |= 0x20;
 			if( xAreIntegerMathsTaskStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: IntMath";
@@ -413,6 +420,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_GENERIC_QUEUE_TESTS == 1 )
 		{
+			xTestMask |= 0x40;
 			if( xAreGenericQueueTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: GenQueue";
@@ -422,6 +430,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_PEEK_QUEUE_TESTS == 1 )
 		{
+			xTestMask |= 0x80;
 			if( xAreQueuePeekTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: QueuePeek";
@@ -431,6 +440,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_MATH_TESTS == 1 )
 		{
+			xTestMask |= 0x100;
 			if( xAreMathsTaskStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Flop";
@@ -440,6 +450,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_RECURSIVE_MUTEX_TESTS == 1 )
 		{
+			xTestMask |= 0x200;
 			if( xAreRecursiveMutexTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: RecMutex";
@@ -449,6 +460,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_COUNTING_SEMAPHORE_TESTS == 1 )
 		{
+			xTestMask |= 0x400;
 			if( xAreCountingSemaphoreTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: CountSem";
@@ -458,6 +470,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_QUEUE_SET_TESTS == 1 )
 		{
+			xTestMask |= 0x800;
 			if( xAreQueueSetTasksStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Queue set";
@@ -467,6 +480,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_QUEUE_OVERWRITE_TESTS == 1 )
 		{
+			xTestMask |= 0x1000;
 			if( xIsQueueOverwriteTaskStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Queue overwrite";
@@ -476,6 +490,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_EVENT_GROUP_TESTS == 1 )
 		{
+			xTestMask |= 0x2000;
 			if( xAreEventGroupTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: EventGroup";
@@ -485,6 +500,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_INTERRUPT_SEMAPHORE_TESTS == 1 )
 		{
+			xTestMask |= 0x4000;
 			if( xAreInterruptSemaphoreTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: IntSem";
@@ -494,6 +510,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_QUEUE_SET_POLLING_TESTS == 1 )
 		{
+			xTestMask |= 0x8000;
 			if( xAreQueueSetPollTasksStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Queue set polling";
@@ -503,6 +520,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_BLOCK_TIME_TESTS == 1 )
 		{
+			xTestMask |= 0x10000;
 			if( xAreBlockTimeTestTasksStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Block time";
@@ -512,6 +530,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_ABORT_DELAY_TESTS == 1 )
 		{
+			xTestMask |= 0x20000;
 			if( xAreAbortDelayTestTasksStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Abort delay";
@@ -521,6 +540,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_MESSAGE_BUFFER_TESTS == 1 )
 		{
+			xTestMask |= 0x40000;
 			if( xAreMessageBufferTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error:  MessageBuffer";
@@ -530,6 +550,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_STREAM_BUFFER_TESTS == 1 )
 		{
+			xTestMask |= 0x80000;
 			if( xAreStreamBufferTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error:  StreamBuffer";
@@ -539,6 +560,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_STREAM_BUFFER_INTERRUPT_TESTS == 1 )
 		{
+			xTestMask |= 0x100000;
 			if( xIsInterruptStreamBufferDemoStillRunning() != pdPASS )
 			{
 				pcStatusMessage = "Error: Stream buffer interrupt";
@@ -548,6 +570,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( ( configSTART_TIMER_TESTS == 1 ) && ( configUSE_PREEMPTION != 0 ) )
 		{
+			xTestMask |= 0x200000;
 			if( xAreTimerDemoTasksStillRunning( xCycleFrequency ) != pdTRUE )
 			{
 				pcStatusMessage = "Error: TimerDemo";
@@ -557,6 +580,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_INTERRUPT_QUEUE_TESTS == 1 )
 		{
+			xTestMask |= 0x400000;
 			if( xAreIntQueueTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: IntQueue";
@@ -566,6 +590,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_REGISTER_TESTS == 1 )
 		{
+			xTestMask |= 0x800000;
 			if( xAreRegisterTasksStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: RegTests";
@@ -575,6 +600,7 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 
 		#if( configSTART_DELETE_SELF_TESTS == 1 )
 		{
+			xTestMask |= 0x1000000;
 			if( xIsCreateTaskStillRunning() != pdTRUE )
 			{
 				pcStatusMessage = "Error: Death";
@@ -582,7 +608,8 @@ const TickType_t xCycleFrequency = pdMS_TO_TICKS( 5000UL );
 		}
 		#endif /* configSTART_DELETE_SELF_TESTS */
 
-		configPRINTF( ( "%s \r\n", pcStatusMessage ) );
+		configPRINTF( ( "%s (test mask 0x%08x)\r\n", pcStatusMessage, xTestMask ) );
+		exit(strcmp(pcStatusMessage, "No errors"));
 	}
 }
 /*-----------------------------------------------------------*/

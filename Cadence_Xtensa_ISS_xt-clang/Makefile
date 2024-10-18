@@ -147,7 +147,7 @@ endif
 CFLAGS     += -g -Wall -Werror
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
-VERIF_CFLAGS= -DCONFIG_VERIF
+VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
 LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
 
 CFLAGS_mpu_basic = -O0
