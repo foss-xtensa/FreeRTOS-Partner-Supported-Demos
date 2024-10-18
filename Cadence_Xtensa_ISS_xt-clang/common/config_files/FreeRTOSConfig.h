@@ -238,6 +238,9 @@
 
 #define configUSE_VARIABLE_FREQUENCY        1
 
+/* Set list structure members as volatile; they can be modified from interrupt context */
+#define configLIST_VOLATILE			        volatile
+
 /**
  * It is a good idea to define configASSERT() while developing.  configASSERT()
  * uses the same semantics as the standard C assert() macro.
@@ -259,35 +262,38 @@
 /* Enable printf (for verif.exe).  Note that calls are wrapped in double parentheses. */
 #define configPRINTF( X )			printf X
 
-/* Set list structure members as volatile; they can be modified from interrupt context */
-#define configLIST_VOLATILE			volatile
+#define CFG1    ((CONFIG_VERIF == 1) ? 1 : 0)
+#define CFG2    ((CONFIG_VERIF == 2) ? 1 : 0)
+#define CFG3    ((CONFIG_VERIF == 3) ? 1 : 0)
+#define CFG4    ((CONFIG_VERIF == 4) ? 1 : 0)
+#define CFG5    ((CONFIG_VERIF == 5) ? 1 : 0)
 
 /* Additional configuration for verif.exe) */
-#define configSTART_TASK_NOTIFY_TESTS             1
-#define configSTART_TASK_NOTIFY_ARRAY_TESTS       1
-#define configSTART_BLOCKING_QUEUE_TESTS          1
-#define configSTART_SEMAPHORE_TESTS               1
-#define configSTART_POLLED_QUEUE_TESTS            1
-#define configSTART_INTEGER_MATH_TESTS            1
-#define configSTART_GENERIC_QUEUE_TESTS           1
-#define configSTART_PEEK_QUEUE_TESTS              1
-#define configSTART_MATH_TESTS                    1
-#define configSTART_RECURSIVE_MUTEX_TESTS         1
-#define configSTART_COUNTING_SEMAPHORE_TESTS      1
-#define configSTART_QUEUE_SET_TESTS               1
-#define configSTART_QUEUE_OVERWRITE_TESTS         1
-#define configSTART_EVENT_GROUP_TESTS             1
-#define configSTART_INTERRUPT_SEMAPHORE_TESTS     1
-#define configSTART_QUEUE_SET_POLLING_TESTS       1
-#define configSTART_BLOCK_TIME_TESTS              1
-#define configSTART_ABORT_DELAY_TESTS             1
-#define configSTART_MESSAGE_BUFFER_TESTS          1
-#define configSTART_STREAM_BUFFER_TESTS           1
-#define configSTART_STREAM_BUFFER_INTERRUPT_TESTS 1
-#define configSTART_TIMER_TESTS                   1
-#define configSTART_INTERRUPT_QUEUE_TESTS         1
-#define configSTART_REGISTER_TESTS                1
-#define configSTART_DELETE_SELF_TESTS             1
+#define configSTART_TASK_NOTIFY_TESTS             CFG1
+#define configSTART_TASK_NOTIFY_ARRAY_TESTS       CFG1
+#define configSTART_BLOCKING_QUEUE_TESTS          CFG1
+#define configSTART_SEMAPHORE_TESTS               CFG1
+#define configSTART_POLLED_QUEUE_TESTS            CFG1
+#define configSTART_INTEGER_MATH_TESTS            CFG2
+#define configSTART_GENERIC_QUEUE_TESTS           CFG2
+#define configSTART_PEEK_QUEUE_TESTS              CFG2
+#define configSTART_MATH_TESTS                    CFG2
+#define configSTART_RECURSIVE_MUTEX_TESTS         CFG2
+#define configSTART_COUNTING_SEMAPHORE_TESTS      CFG3
+#define configSTART_QUEUE_SET_TESTS               CFG3
+#define configSTART_QUEUE_OVERWRITE_TESTS         CFG3
+#define configSTART_EVENT_GROUP_TESTS             CFG3
+#define configSTART_INTERRUPT_SEMAPHORE_TESTS     CFG3
+#define configSTART_QUEUE_SET_POLLING_TESTS       CFG4
+#define configSTART_BLOCK_TIME_TESTS              CFG4
+#define configSTART_ABORT_DELAY_TESTS             CFG4
+#define configSTART_MESSAGE_BUFFER_TESTS          CFG4
+#define configSTART_STREAM_BUFFER_TESTS           CFG4
+#define configSTART_STREAM_BUFFER_INTERRUPT_TESTS CFG5
+#define configSTART_TIMER_TESTS                   CFG5
+#define configSTART_INTERRUPT_QUEUE_TESTS         CFG5
+#define configSTART_REGISTER_TESTS                CFG5
+#define configSTART_DELETE_SELF_TESTS             CFG5
 
 #if configSTART_INTERRUPT_QUEUE_TESTS
 /* Interrupt tests require timer tick to use lowest-priority interrupt
