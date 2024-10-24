@@ -296,6 +296,7 @@
 #define configSTART_DELETE_SELF_TESTS             CFG5
 
 #if configSTART_INTERRUPT_QUEUE_TESTS
+
 /* Interrupt tests require timer tick to use lowest-priority interrupt
  * so that it can be preempted.
  */
@@ -338,7 +339,45 @@
       #define XT_TIMER_LEVEL    XCHAL_INT_LEVEL(XCHAL_TIMER0_INTERRUPT)
     #endif
   #endif
+#endif /* !defined XT_TIMER_INDEX */
+
+/* Now that we know timer tick interrupt level, check whether config has 
+ * a second timer T2 where (XT_TIMER_LEVEL < T2 <= EXCM_LEVEL), otherwise 
+ * disable nesting test.
+ */
+#if (XCHAL_TIMER0_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
+    (XT_TIMER_INDEX != 0)
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER0_INTERRUPT) > XT_TIMER_LEVEL) && \
+      (XCHAL_INT_LEVEL(XCHAL_TIMER0_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_NEST   0
+  #endif
 #endif
+#if (XCHAL_TIMER1_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
+    (XT_TIMER_INDEX != 1) && !(defined XT_TIMER_NEST)
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) > XT_TIMER_LEVEL) && \
+      (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_NEST   1
+  #endif
+#endif
+#if (XCHAL_TIMER2_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
+    (XT_TIMER_INDEX != 2) && !(defined XT_TIMER_NEST)
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER2_INTERRUPT) > XT_TIMER_LEVEL) && \
+      (XCHAL_INT_LEVEL(XCHAL_TIMER2_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_NEST   2
+  #endif
+#endif
+#if (XCHAL_TIMER3_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
+    (XT_TIMER_INDEX != 3) && !(defined XT_TIMER_NEST)
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) > XT_TIMER_LEVEL) && \
+      (XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_NEST   3
+  #endif
+#endif
+#if !(defined(XT_TIMER_NEST))
+  #undef  configSTART_INTERRUPT_QUEUE_TESTS
+  #define configSTART_INTERRUPT_QUEUE_TESTS 0
+#endif
+
 #endif /* configSTART_INTERRUPT_QUEUE_TESTS */
 
 #endif /* CONFIG_VERIF */
