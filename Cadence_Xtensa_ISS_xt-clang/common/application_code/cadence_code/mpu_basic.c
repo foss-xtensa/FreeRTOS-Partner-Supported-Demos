@@ -323,7 +323,7 @@ int check_private_mpu(TaskParameters_t* taskParams)
  * private memory while all other memory should be RWXrx, thus only readable
  * from this task.
  */
-static void restrictedUserTask1( void *arg )
+static void restrictedUserTask1( void *arg ) __attribute__ ((optimize("-O0")))
 {
   uint32_t readData;
 
@@ -380,7 +380,7 @@ static void restrictedUserTask1( void *arg )
  * private memory while all other memory should be RWXrx, thus  fully accessible
  * from this task.
  */
-static void restrictedPrivTask1( void *arg )
+static void restrictedPrivTask1( void *arg ) __attribute__ ((optimize("-O0")))
 {
   uint32_t readData;
 
@@ -410,7 +410,7 @@ static void restrictedPrivTask1( void *arg )
 /* This task is created in Priv mode using the original xTaskCreate() API
  * function.  It should have access to all the memory.
  */
-static void PrivTask1( void *pvParameters )
+static void PrivTask1( void *pvParameters ) __attribute__ ((optimize("-O0")))
 {
   uint32_t readData;
 
@@ -441,7 +441,7 @@ static void PrivTask1( void *pvParameters )
  * Note that xTaskCreate() can no longer be used to create nonprivileged
  * tasks. It should have access only to its stack.
  */
-static void staticUserTask1( void *pvParameters )
+static void staticUserTask1( void *pvParameters ) __attribute__ ((optimize("-O0")))
 {
   uint32_t readData;
 
