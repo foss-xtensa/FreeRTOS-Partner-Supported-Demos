@@ -69,6 +69,15 @@
 /* Default clock rate for simulator */
 #define configCPU_CLOCK_HZ								50000000
 
+#if (defined SMP_TEST)
+/* Multicore settings */
+#define configNUMBER_OF_CORES                           XCHAL_SUBSYS_NUM_CORES
+#define configUSE_PASSIVE_IDLE_HOOK                     0
+#define configRUN_MULTIPLE_PRIORITIES                   1
+#define configUSE_CORE_AFFINITY                         1
+#define configUSE_TASK_PREEMPTION_DISABLE               1
+#endif
+
 /* This has impact on speed of search for highest priority */
 #ifdef SMALL_TEST
 #define configMAX_PRIORITIES							( 7 )

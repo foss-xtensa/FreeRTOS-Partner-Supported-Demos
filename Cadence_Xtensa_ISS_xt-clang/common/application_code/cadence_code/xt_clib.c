@@ -70,7 +70,13 @@
 uint32_t     result[NTASKS];
 TaskHandle_t Task_TCB[NTASKS];
 
+#if ( configNUMBER_OF_CORES == 1 )
 extern volatile uint32_t * volatile pxCurrentTCB;
+#define CURRTCB                 ( pxCurrentTCB )
+#else
+extern volatile uint32_t * volatile pxCurrentTCBs[];
+#define CURRTCB                 ( pxCurrentTCBs[ portGET_CORE_ID() ] )
+#endif
 
 
 // Task function.
@@ -87,11 +93,11 @@ void Task_Func( void * pdata )
     while ( cnt < 400 )
     {
 #if XSHAL_CLIB == XTHAL_CLIB_XCLIB || XSHAL_CLIB == XTHAL_CLIB_NEWLIB
-        if ( pxCurrentTCB )
+        if ( CURRTCB )
         {
             // Note that _impure_ptr (newlib) is redefined as _reent_ptr in the case of
             // xclib.
-            if ( _impure_ptr != (void *)(&pxCurrentTCB[TCB_IMPURE_PTR_OFF / 4]) )
+            if ( _impure_ptr != (void *)(&CURRTCB[TCB_IMPURE_PTR_OFF / 4]) )
             {
                 // A failure might mean that the hack definition of TCB in this file, xt_clib.c,
                 // is out of date with respect to the official definition in tasks.c.

@@ -145,6 +145,9 @@ else
 CFLAGS     ?= -O2
 endif
 CFLAGS     += -g -Wall -Werror
+ifeq ($(SMP),1)
+CFLAGS     += -DSMP_TEST
+endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
