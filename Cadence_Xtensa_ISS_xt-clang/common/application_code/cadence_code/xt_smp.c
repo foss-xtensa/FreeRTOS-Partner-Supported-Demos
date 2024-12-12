@@ -86,18 +86,23 @@ static void putstr(const char *s)
 #define TASK_INIT_PRIO          (20 | portPRIVILEGE_BIT)
 #define INIT_TASK_STK_SIZE      ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
 
+const char *basestr = "Hello from Core X\n";
+
+
 static void Core_Task(void *pdata)
 {
     int core;
-    char *str = "Xtensa SMP test (xt_smp): Hello from Core X\n";
-    char *p = strchr(str, 'X');
+    char corestr[64];
+    char *p;
 
     UNUSED(pdata);
 
     /* Call a function that does an alloca over my base save area. */
     core = xthal_get_coreid();
-    p[0] = '0' + core;
-    putstr(str);
+    strcpy(corestr, basestr);
+    p = strchr(corestr, 'X');
+    *p = '0' + core;
+    putstr(corestr);
     putstr("PASSED!\n");
 
     #ifdef XT_SIMULATOR
