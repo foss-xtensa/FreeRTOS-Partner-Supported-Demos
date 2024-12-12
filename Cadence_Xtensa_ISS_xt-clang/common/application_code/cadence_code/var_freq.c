@@ -182,6 +182,7 @@ static void timer(TimerHandle_t t)
 
 static void timer1(void *p)
 {
+    UBaseType_t intstat;
     static uint32_t clock_idx;
     static const uint32_t clock_freq_variant[] = {
         FREQ_HIGH,
@@ -194,7 +195,9 @@ static void timer1(void *p)
     clock_idx = 1 - clock_idx;
 
     set_ccompare(0);
+    intstat = taskENTER_CRITICAL_FROM_ISR();
     xt_update_clock_frequency();
+    taskEXIT_CRITICAL_FROM_ISR(intstat);
 }
 
 static void Init_Task(void *pdata)

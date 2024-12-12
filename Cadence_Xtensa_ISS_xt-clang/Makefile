@@ -91,6 +91,9 @@ STRESS_COMM_C	= \
 ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
+ifeq ($(SMP),1)
+TEST_FILES += xt_smp.c
+endif
 
 EXE         = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.exe,$(TEST_FILES)))
 COMM_OBJS   = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES)))
@@ -152,6 +155,9 @@ CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
 LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
+ifeq ($(SMP),1)
+LDFLAGS    += -Wl,--orphan-handling=place
+endif
 
 CFLAGS_mpu_basic = -O0
 CFLAGS_xt_coproc = -O3
@@ -259,6 +265,8 @@ xt_alloca : $(BLDDIR)/xt_alloca.exe
 xt_clib   : $(BLDDIR)/xt_clib.exe
 
 xt_intr   : $(BLDDIR)/xt_intr.exe
+
+xt_smp    : $(BLDDIR)/xt_smp.exe
 
 stress   : $(BLDDIR)/stress/stress.exe
 
