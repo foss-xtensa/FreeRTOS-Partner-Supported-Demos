@@ -27,7 +27,8 @@
 *
 *                                            SMP TEST
 *
-* This test starts a couple of tasks on different cores and prints their core IDs.
+* This test starts a couple of tasks on one core and compares their runtime with running
+* the same tasks on multiple cores.
 *
 *********************************************************************************************************
 */
@@ -35,9 +36,9 @@
 #include    <ctype.h>
 #include    <string.h>
 #include    <unistd.h>
-#include    <alloca.h>
 #include    <assert.h>
 #include    <stdio.h>
+#include    <math.h>
 
 #ifdef XT_BOARD
 #include    <xtensa/xtbsp.h>
@@ -49,13 +50,52 @@
 #include "task.h"
 #include "queue.h"
 
-/*
-*********************************************************************************************************
-*                                             LOCAL FUNCTIONS
-*********************************************************************************************************
-*/
 
-/* Output a simple string to the console. */
+/* Create task as privileged if MPU enabled. */
+#define TASK_INIT_PRIO          (20 | portPRIVILEGE_BIT)
+#define INIT_TASK_STK_SIZE      ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
+
+#define TEST_TASK_COUNT         configNUMBER_OF_CORES
+#define TEST_TASK_LOOPS         500
+#define TEST_TASK_SLEEPS        10
+
+
+/* Some basic task synchronization that relies on coherent shared memory */
+uint32_t task_done[configNUMBER_OF_CORES];
+
+/* Initialize task control flags */
+static void task_ctrl_init(void)
+{
+    int i;
+    for (i = 0; i < configNUMBER_OF_CORES; i++) {
+        task_done[i] = 0;
+    }
+}
+
+/* Signal task "task_id" is done */
+static void task_ctrl_signal_done(int task_id) {
+    task_done[task_id] = 1;
+}
+
+/* Wait (yielding) until all tasks are done */
+static void task_ctrl_wait_yield(void)
+{
+    while (1) {
+        int i;
+        for (i = 0; i < TEST_TASK_COUNT; i++) {
+            if (task_done[i] == 0) {
+                break;  // still running
+            }
+        }
+        if (i == TEST_TASK_COUNT) {
+            break;
+        }
+        taskYIELD();
+    }
+}
+
+
+/* Output a simple string to the console to avoid printf dependency. */
 static void putstr(const char *s)
 {
     char c;
@@ -75,36 +115,182 @@ static void putstr(const char *s)
 }
 
 /*
-*********************************************************************************************************
-*                                          APP INITIALZATION TASK
-*
-*
-*********************************************************************************************************
+**  Public Domain ltoa()
+**
+**  Converts a long integer to a string.
+**
+**  Copyright 1988-90 by Robert B. Stout dba MicroFirm
+**
+**  Released to public domain, 1991
+**
+**  Parameters: 1 - number to be converted
+**              2 - buffer in which to build the converted string
+**              3 - number base to use for conversion
+**
+**  Returns:  A character pointer to the converted string if
+**            successful, a NULL pointer if the number base specified
+**            is out of range.
 */
 
-/* Create task as privileged if MPU enabled. */
-#define TASK_INIT_PRIO          (20 | portPRIVILEGE_BIT)
-#define INIT_TASK_STK_SIZE      ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
+#include <stdlib.h>
+#include <string.h>
+
+#define BUFSIZE (sizeof(long) * 8 + 1)
+
+char *ltoa(long N, char *str, int base)
+{
+      register int i = 2;
+      long uarg;
+      char *tail, *head = str, buf[BUFSIZE];
+
+      if (36 < base || 2 > base)
+            base = 10;                    /* can only use 0-9, A-Z        */
+      tail = &buf[BUFSIZE - 1];           /* last character position      */
+      *tail-- = '\0';
+
+      if (10 == base && N < 0L)
+      {
+            *head++ = '-';
+            uarg    = -N;
+      }
+      else  uarg = N;
+
+      if (uarg)
+      {
+            for (i = 1; uarg; ++i)
+            {
+                  register ldiv_t r;
+
+                  r       = ldiv(uarg, base);
+                  *tail-- = (char)(r.rem + ((9L < r.rem) ?
+                                  ('A' - 10L) : '0'));
+                  uarg    = r.quot;
+            }
+      }
+      else  *tail-- = '0';
+
+      memcpy(head, ++tail, i);
+      return str;
+}
+
+/* Output a long to the console to avoid printf dependency. */
+static void putlong(const long l)
+{
+    char c[64];
+    char *p = ltoa(l, c, 10);
+    putstr(p ? p : "");
+}
+
+
+/* Task to create some noticeable processor activity */
+static void Test_Task(void *pdata)
+{
+    int i;
+    float x = 1.0;
+    double y = 1.0;
+    char taskstr[64] = "\nTask N: Starting...\n";
+    char statstr[4] = ".";
+    char *p;
+
+    p = strchr(taskstr, 'N');
+    *p = '0' + (int)pdata;
+    putstr(taskstr);
+
+    for (i = 0; i < TEST_TASK_LOOPS; i++) {
+        statstr[0] = '0' + (int)pdata;
+        putstr(statstr);
+        x += sqrt(3.141592654 * (3.0 + (float)i));
+        y += sqrt((double)3.141592654 * (double)(3.0 + (double)i));
+        if ((i % TEST_TASK_SLEEPS) == 0) {
+            statstr[0] = 's' + (int)pdata;
+            putstr(statstr);
+            taskYIELD();
+        }
+    }
+
+    p = strchr(taskstr, 'S');
+    *p = (x + y == 0.0) ? '0' : '1';
+    *(p+1) = '\0';
+    putstr(taskstr);
+    task_ctrl_signal_done((int)pdata);
+    vTaskDelete(NULL);
+}
+
 
 const char *basestr = "Hello from Core X\n";
 
-
 static void Core_Task(void *pdata)
 {
-    int core;
+    TaskHandle_t tasks[configNUMBER_OF_CORES];
     char corestr[64];
+    int core, err, i;
+    long start_ticks, total_ticks_1core, total_ticks_allcores;
     char *p;
 
     UNUSED(pdata);
 
-    /* Call a function that does an alloca over my base save area. */
+    /* Display some core-specific output */
     core = xthal_get_coreid();
     strcpy(corestr, basestr);
     p = strchr(corestr, 'X');
     *p = '0' + core;
     putstr(corestr);
-    putstr("PASSED!\n");
 
+    /* Create test tasks running on the same core as a control test */
+    task_ctrl_init();
+    start_ticks = xTaskGetTickCount();
+    for (i = 0; i < TEST_TASK_COUNT; i++) {
+        err = xTaskCreateAffinitySet(Test_Task, 
+                                     "Test_Task", 
+                                     INIT_TASK_STK_SIZE, 
+                                     (void *)i, 
+                                     TASK_INIT_PRIO, 
+                                     1,     // core 0 only
+                                     &(tasks[i]));
+        if (err != pdPASS)
+        {
+            putstr(" FAILED to create Test_Task (core 0)\n");
+            goto done;
+        }
+    }
+    task_ctrl_wait_yield();
+    total_ticks_1core = xTaskGetTickCount() - start_ticks;
+    putstr("\nsingle-core ticks: ");
+    putlong(total_ticks_1core);
+    putstr("\n");
+
+
+    /* Create test tasks running on multiple cores */
+    task_ctrl_init();
+    start_ticks = xTaskGetTickCount();
+    for (i = 0; i < TEST_TASK_COUNT; i++) {
+        err = xTaskCreateAffinitySet(Test_Task, 
+                                     "Test_Task", 
+                                     INIT_TASK_STK_SIZE, 
+                                     (void *)i, 
+                                     TASK_INIT_PRIO, 
+                                     1 << i, // 1 task per core
+                                     &(tasks[i]));
+        if (err != pdPASS)
+        {
+            putstr(" FAILED to create Test_Task (all cores)\n");
+            goto done;
+        }
+    }
+    task_ctrl_wait_yield();
+    total_ticks_allcores = xTaskGetTickCount() - start_ticks;
+    putstr("\nmulti-core ticks: ");
+    putlong(total_ticks_allcores);
+    putstr("\n");
+
+    /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
+    if ((total_ticks_allcores * (TEST_TASK_COUNT - 1)) < total_ticks_1core) {
+        putstr("PASSED!\n");
+    } else {
+        putstr("FAILED\n");
+    }
+
+done:
     #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
     _exit(0);
@@ -138,7 +324,6 @@ void vApplicationTickHook( void )
 
 void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
 {
-    /* For some reason printing pcTaskName is not working */
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
@@ -147,31 +332,28 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
 
 int main(void)
 #else
-int main_xt_alloca(int argc, char *argv[])
+int main_xt_smp(int argc, char *argv[])
 #endif
 {
     int err = 0;
     int exit_code = 0;
-    int i;
-    TaskHandle_t handles[configNUMBER_OF_CORES];
+    TaskHandle_t handle;
 
     putstr("Test running...\n");
 
-    for (i = 0; i < configNUMBER_OF_CORES; i++) {
-        /* Create the control task initially with the high priority. */
-        err = xTaskCreate(Core_Task, 
-                          "Core_Task", 
-                          INIT_TASK_STK_SIZE, 
-                          NULL, 
-                          TASK_INIT_PRIO, 
-                          &(handles[i]));
-        if (err != pdPASS)
-        {
-            putstr(" FAILED to create Init_Task\n");
-            goto done;
-        }
-        vTaskCoreAffinitySet(handles[i], 1 << i);
+    /* Create the control task initially with the high priority. */
+    err = xTaskCreate(Core_Task, 
+                      "Core_Task", 
+                      INIT_TASK_STK_SIZE, 
+                      NULL, 
+                      TASK_INIT_PRIO, 
+                      &handle);
+    if (err != pdPASS)
+    {
+        putstr(" FAILED to create Core_Task\n");
+        goto done;
     }
+    vTaskCoreAffinitySet(handle, 1);    // Core 0 only
 
     /* Start task scheduler */
     vTaskStartScheduler();
