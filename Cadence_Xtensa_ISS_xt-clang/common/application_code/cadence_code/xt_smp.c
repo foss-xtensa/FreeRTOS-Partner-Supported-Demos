@@ -188,12 +188,14 @@ static void Test_Task(void *pdata)
     int i;
     float x = 1.0;
     double y = 1.0;
-    char taskstr[64] = "\nTask N: Starting...\n";
+    char taskstr[64] = "\nTask N: Starting on core C...\n";
     char statstr[4] = ".";
     char *p;
 
     p = strchr(taskstr, 'N');
     *p = '0' + (int)pdata;
+    p = strchr(taskstr, 'C');
+    *p = '0' + xthal_get_coreid();
     putstr(taskstr);
 
     for (i = 0; i < TEST_TASK_LOOPS; i++) {
@@ -217,24 +219,20 @@ static void Test_Task(void *pdata)
 }
 
 
-const char *basestr = "Hello from Core X\n";
-
 static void Core_Task(void *pdata)
 {
     TaskHandle_t tasks[configNUMBER_OF_CORES];
-    char corestr[64];
-    int core, err, i;
+    int err, i;
     long start_ticks, total_ticks_1core, total_ticks_allcores;
-    char *p;
 
+    putstr("Core_Task started on core 0\n");
     UNUSED(pdata);
 
-    /* Display some core-specific output */
-    core = xthal_get_coreid();
-    strcpy(corestr, basestr);
-    p = strchr(corestr, 'X');
-    *p = '0' + core;
-    putstr(corestr);
+    if (xthal_get_coreid() > 0) {
+        const char errstr[5] = "err\n";
+        putstr(errstr);
+        exit(-1);
+    }
 
     /* Create test tasks running on the same core as a control test */
     task_ctrl_init();
@@ -339,24 +337,41 @@ int main_xt_smp(int argc, char *argv[])
     int exit_code = 0;
     TaskHandle_t handle;
 
-    putstr("Test running...\n");
+    /* Display some core-specific output */
+    int core = xthal_get_coreid();
+    static char corestr[64] __attribute__((__section__(".dram0.data"))) = 
+        "Test starting on core X\n";
+    static char schedstr[64] __attribute__((__section__(".dram0.data"))) = 
+        "Scheduler starting on core X\n";
+    char *p = strchr(corestr, 'X');
+    *p = '0' + core;
+    putstr(corestr);
 
-    /* Create the control task initially with the high priority. */
-    err = xTaskCreate(Core_Task, 
-                      "Core_Task", 
-                      INIT_TASK_STK_SIZE, 
-                      NULL, 
-                      TASK_INIT_PRIO, 
-                      &handle);
-    if (err != pdPASS)
-    {
-        putstr(" FAILED to create Core_Task\n");
-        goto done;
+    if (xthal_get_coreid() == 0) {
+        /* Create the control task initially with the high priority. */
+        err = xTaskCreate(Core_Task, 
+                          "Core_Task", 
+                          INIT_TASK_STK_SIZE, 
+                          NULL, 
+                          TASK_INIT_PRIO, 
+                          &handle);
+        if (err != pdPASS)
+        {
+            putstr(" FAILED to create Core_Task\n");
+            goto done;
+        }
+        vTaskCoreAffinitySet(handle, 1);    // Core 0 only
+        putstr("Created Core_Task on core 0\n");
+
+        /* Start task scheduler */
+        p = strchr(schedstr, 'X');
+        *p = '0' + core;
+        putstr(schedstr);
+        vTaskStartScheduler();
+    } else {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
     }
-    vTaskCoreAffinitySet(handle, 1);    // Core 0 only
-
-    /* Start task scheduler */
-    vTaskStartScheduler();
 
 done:
     exit_code = err;

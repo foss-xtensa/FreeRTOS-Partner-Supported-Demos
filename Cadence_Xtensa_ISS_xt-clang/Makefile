@@ -117,7 +117,11 @@ OSLIB_VERIF = $(BLDDIR)$(S)stress$(S)libfreertos.a
 
 ifeq ($(TARGET),sim)
 DFLAGS      = -DXT_SIMULATOR
+ifeq ($(SMP),1)
+LSP         = sim-mc
+else
 LSP         = sim
+endif
 endif
 ifeq ($(TARGET),ml605)
 DFLAGS      = -DXT_BOARD
