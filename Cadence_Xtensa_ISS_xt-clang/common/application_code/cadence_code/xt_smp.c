@@ -212,7 +212,8 @@ static void Test_Task(void *pdata)
 
     p = strchr(taskstr, 'S');
     *p = (x + y == 0.0) ? '0' : '1';
-    *(p+1) = '\0';
+    *(p+1) = '\n';
+    *(p+2) = '\0';
     putstr(taskstr);
     task_ctrl_signal_done((int)pdata);
     vTaskDelete(NULL);
@@ -223,7 +224,7 @@ static void Core_Task(void *pdata)
 {
     TaskHandle_t tasks[configNUMBER_OF_CORES];
     int err, i;
-    long start_ticks, total_ticks_1core, total_ticks_allcores;
+    long start_ticks = 0, total_ticks_1core = 0, total_ticks_allcores = 0;
 
     putstr("Core_Task started on core 0\n");
     UNUSED(pdata);
@@ -234,6 +235,7 @@ static void Core_Task(void *pdata)
         exit(-1);
     }
 
+#if 0
     /* Create test tasks running on the same core as a control test */
     task_ctrl_init();
     start_ticks = xTaskGetTickCount();
@@ -256,6 +258,7 @@ static void Core_Task(void *pdata)
     putstr("\nsingle-core ticks: ");
     putlong(total_ticks_1core);
     putstr("\n");
+#endif
 
 
     /* Create test tasks running on multiple cores */
@@ -369,6 +372,10 @@ int main_xt_smp(int argc, char *argv[])
         putstr(schedstr);
         vTaskStartScheduler();
     } else {
+        /* Start task scheduler */
+        p = strchr(schedstr, 'X');
+        *p = '0' + core;
+        putstr(schedstr);
         portDISABLE_INTERRUPTS();
         (void) xPortStartScheduler();
     }
