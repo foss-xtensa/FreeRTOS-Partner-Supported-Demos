@@ -43,6 +43,7 @@
 #ifdef XT_BOARD
 #include    <xtensa/xtbsp.h>
 #endif
+#include    <xtensa/xtutil.h>
 
 #include "testcommon.h"
 
@@ -80,6 +81,7 @@ static void task_ctrl_signal_done(int task_id) {
 /* Wait (yielding) until all tasks are done */
 static void task_ctrl_wait_yield(void)
 {
+    int core = xthal_get_coreid();
     while (1) {
         int i;
         for (i = 0; i < TEST_TASK_COUNT; i++) {
@@ -90,7 +92,9 @@ static void task_ctrl_wait_yield(void)
         if (i == TEST_TASK_COUNT) {
             break;
         }
-        taskYIELD();
+        if (task_done[core] == 0) {
+            taskYIELD();
+        }
     }
 }
 
@@ -226,7 +230,7 @@ static void Core_Task(void *pdata)
     int err, i;
     long start_ticks = 0, total_ticks_1core = 0, total_ticks_allcores = 0;
 
-    putstr("Core_Task started on core 0\n");
+    xt_printf("Core_Task started on core %d\n", xthal_get_coreid());
     UNUSED(pdata);
 
     if (xthal_get_coreid() > 0) {
