@@ -137,7 +137,11 @@ ifeq ($(MPU),1)
 LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
 MPUFLAGS    = -DportUSING_MPU_WRAPPERS=1 -DportALIGN_SECTIONS
 else
+ifeq ($(SMP),1)
+LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
+else
 LSPPATH     = $(LSP)
+endif
 endif
 
 # Build options. Override CFLAGS from the make command line if desired.
@@ -226,17 +230,19 @@ $(BLDDIR)/stress/.mkdir : $(BLDDIR)/.mkdir
 	@echo "" > $@
 
 ifeq ($(MPU),1)
-MPULSP = $(LSPPATH)/.mkdir
-lsptest : $(LSPPATH)/.mkdir
+CUSTLSP = $(LSPPATH)/.mkdir
+endif
+ifeq ($(SMP),1)
+CUSTLSP = $(LSPPATH)/.mkdir
 endif
 
-$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(MPULSP)
+$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
-$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(MPULSP)
+$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm
 
 $(BLDDIR)/stress/%.o : stress/%.c $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSLIB_VERIF)
