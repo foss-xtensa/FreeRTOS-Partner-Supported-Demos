@@ -62,7 +62,7 @@
 
 
 /* Some basic task synchronization that relies on coherent shared memory */
-uint32_t task_done[configNUMBER_OF_CORES];
+volatile uint32_t task_done[configNUMBER_OF_CORES];
 
 /* Initialize task control flags */
 static void task_ctrl_init(void)
@@ -99,126 +99,32 @@ static void task_ctrl_wait_yield(void)
 }
 
 
-/* Output a simple string to the console to avoid printf dependency. */
-static void putstr(const char *s)
-{
-    char c;
-
-    while ((c = *s) != '\0') {
-        if (c == '\n') {
-            outbyte('\r');
-            outbyte('\n');
-        }
-        else if (iscntrl((int)c) && c != '\r') {
-            outbyte('^');
-            outbyte('@' + c);
-        }
-        else outbyte(c);
-        ++s;
-    }
-}
-
-/*
-**  Public Domain ltoa()
-**
-**  Converts a long integer to a string.
-**
-**  Copyright 1988-90 by Robert B. Stout dba MicroFirm
-**
-**  Released to public domain, 1991
-**
-**  Parameters: 1 - number to be converted
-**              2 - buffer in which to build the converted string
-**              3 - number base to use for conversion
-**
-**  Returns:  A character pointer to the converted string if
-**            successful, a NULL pointer if the number base specified
-**            is out of range.
-*/
-
-#include <stdlib.h>
-#include <string.h>
-
-#define BUFSIZE (sizeof(long) * 8 + 1)
-
-char *ltoa(long N, char *str, int base)
-{
-      register int i = 2;
-      long uarg;
-      char *tail, *head = str, buf[BUFSIZE];
-
-      if (36 < base || 2 > base)
-            base = 10;                    /* can only use 0-9, A-Z        */
-      tail = &buf[BUFSIZE - 1];           /* last character position      */
-      *tail-- = '\0';
-
-      if (10 == base && N < 0L)
-      {
-            *head++ = '-';
-            uarg    = -N;
-      }
-      else  uarg = N;
-
-      if (uarg)
-      {
-            for (i = 1; uarg; ++i)
-            {
-                  register ldiv_t r;
-
-                  r       = ldiv(uarg, base);
-                  *tail-- = (char)(r.rem + ((9L < r.rem) ?
-                                  ('A' - 10L) : '0'));
-                  uarg    = r.quot;
-            }
-      }
-      else  *tail-- = '0';
-
-      memcpy(head, ++tail, i);
-      return str;
-}
-
-/* Output a long to the console to avoid printf dependency. */
-static void putlong(const long l)
-{
-    char c[64];
-    char *p = ltoa(l, c, 10);
-    putstr(p ? p : "");
-}
-
-
 /* Task to create some noticeable processor activity */
 static void Test_Task(void *pdata)
 {
-    int i;
+    int i, j;
     float x = 1.0;
     double y = 1.0;
-    char taskstr[64] = "\nTask N: Starting on core C...\n";
     char statstr[4] = ".";
-    char *p;
 
-    p = strchr(taskstr, 'N');
-    *p = '0' + (int)pdata;
-    p = strchr(taskstr, 'C');
-    *p = '0' + xthal_get_coreid();
-    putstr(taskstr);
+    xt_printf("\nTask %d: Starting on core %d...\n",
+              (int)pdata, xthal_get_coreid());
 
     for (i = 0; i < TEST_TASK_LOOPS; i++) {
         statstr[0] = '0' + (int)pdata;
-        putstr(statstr);
-        x += sqrt(3.141592654 * (3.0 + (float)i));
-        y += sqrt((double)3.141592654 * (double)(3.0 + (double)i));
+        xt_printf(statstr);
+        for (j = 0; j < 100; j++) {
+            x += sqrt(3.141592654 * (3.0 + (float)i));
+            y += sqrt((double)3.141592654 * (double)(3.0 + (double)i));
+        }
         if ((i % TEST_TASK_SLEEPS) == 0) {
             statstr[0] = 's' + (int)pdata;
-            putstr(statstr);
+            xt_printf(statstr);
             taskYIELD();
         }
     }
 
-    p = strchr(taskstr, 'S');
-    *p = (x + y == 0.0) ? '0' : '1';
-    *(p+1) = '\n';
-    *(p+2) = '\0';
-    putstr(taskstr);
+    xt_printf("\nTask %d: %d\n", (int)pdata, (x + y == 0.0) ? 0 : 1);
     task_ctrl_signal_done((int)pdata);
     vTaskDelete(NULL);
 }
@@ -234,16 +140,15 @@ static void Core_Task(void *pdata)
     UNUSED(pdata);
 
     if (xthal_get_coreid() > 0) {
-        const char errstr[5] = "err\n";
-        putstr(errstr);
+        xt_printf("err\n");
         exit(-1);
     }
 
-#if 0
     /* Create test tasks running on the same core as a control test */
     task_ctrl_init();
     start_ticks = xTaskGetTickCount();
-    for (i = 0; i < TEST_TASK_COUNT; i++) {
+    for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
+        xt_printf("Creating task %d on core %d\n", i, 0);
         err = xTaskCreateAffinitySet(Test_Task, 
                                      "Test_Task", 
                                      INIT_TASK_STK_SIZE, 
@@ -251,24 +156,23 @@ static void Core_Task(void *pdata)
                                      TASK_INIT_PRIO, 
                                      1,     // core 0 only
                                      &(tasks[i]));
-        if (err != pdPASS)
-        {
-            putstr(" FAILED to create Test_Task (core 0)\n");
+        if (err != pdPASS) {
+            xt_printf(" FAILED to create Test_Task (core 0)\n");
             goto done;
+        }
+        while ((xTaskGetTickCount() + TEST_TASK_COUNT - i) <= start_ticks) {
+            // Wait for timer tick to be sure other tasks are running
         }
     }
     task_ctrl_wait_yield();
     total_ticks_1core = xTaskGetTickCount() - start_ticks;
-    putstr("\nsingle-core ticks: ");
-    putlong(total_ticks_1core);
-    putstr("\n");
-#endif
-
+    xt_printf("\nsingle-core ticks: %d\n", total_ticks_1core);
 
     /* Create test tasks running on multiple cores */
     task_ctrl_init();
     start_ticks = xTaskGetTickCount();
-    for (i = 0; i < TEST_TASK_COUNT; i++) {
+    for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
+        xt_printf("Creating task %d on core %d\n", i, i);
         err = xTaskCreateAffinitySet(Test_Task, 
                                      "Test_Task", 
                                      INIT_TASK_STK_SIZE, 
@@ -276,30 +180,28 @@ static void Core_Task(void *pdata)
                                      TASK_INIT_PRIO, 
                                      1 << i, // 1 task per core
                                      &(tasks[i]));
-        if (err != pdPASS)
-        {
-            putstr(" FAILED to create Test_Task (all cores)\n");
+        if (err != pdPASS) {
+            xt_printf(" FAILED to create Test_Task (all cores)\n");
             goto done;
+        }
+        while ((xTaskGetTickCount() + TEST_TASK_COUNT - i) <= start_ticks) {
+            // Wait for timer tick to be sure other tasks are running
         }
     }
     task_ctrl_wait_yield();
     total_ticks_allcores = xTaskGetTickCount() - start_ticks;
-    putstr("\nmulti-core ticks: ");
-    putlong(total_ticks_allcores);
-    putstr("\n");
+    xt_printf("\nmulti-core ticks: %d\n", total_ticks_allcores);
 
     /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
-    if ((total_ticks_allcores * (TEST_TASK_COUNT - 1)) < total_ticks_1core) {
-        putstr("PASSED!\n");
+    if ((total_ticks_allcores * 2) < total_ticks_1core) {
+        xt_printf("PASSED!\n");
     } else {
-        putstr("FAILED\n");
+        xt_printf("FAILED\n");
     }
 
 done:
-    #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(0);
-    #endif
+    exit(0);
 
     /* Terminate this task. OS will continue to run timer, stats and idle tasks. */
     vTaskDelete(NULL);
@@ -346,13 +248,7 @@ int main_xt_smp(int argc, char *argv[])
 
     /* Display some core-specific output */
     int core = xthal_get_coreid();
-    static char corestr[64] __attribute__((__section__(".dram0.data"))) = 
-        "Test starting on core X\n";
-    static char schedstr[64] __attribute__((__section__(".dram0.data"))) = 
-        "Scheduler starting on core X\n";
-    char *p = strchr(corestr, 'X');
-    *p = '0' + core;
-    putstr(corestr);
+    xt_printf("Test starting on core %d\n", core);
 
     if (xthal_get_coreid() == 0) {
         /* Create the control task initially with the high priority. */
@@ -364,22 +260,18 @@ int main_xt_smp(int argc, char *argv[])
                           &handle);
         if (err != pdPASS)
         {
-            putstr(" FAILED to create Core_Task\n");
+            xt_printf(" FAILED to create Core_Task\n");
             goto done;
         }
         vTaskCoreAffinitySet(handle, 1);    // Core 0 only
-        putstr("Created Core_Task on core 0\n");
+        xt_printf("Created Core_Task on core 0\n");
 
         /* Start task scheduler */
-        p = strchr(schedstr, 'X');
-        *p = '0' + core;
-        putstr(schedstr);
+        xt_printf("Scheduler starting on core %d\n", core);
         vTaskStartScheduler();
     } else {
         /* Start task scheduler */
-        p = strchr(schedstr, 'X');
-        *p = '0' + core;
-        putstr(schedstr);
+        xt_printf("Scheduler starting on core %d\n", core);
         portDISABLE_INTERRUPTS();
         (void) xPortStartScheduler();
     }
@@ -387,10 +279,8 @@ int main_xt_smp(int argc, char *argv[])
 done:
     exit_code = err;
 
-    #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(exit_code);
-    #endif
+    exit(exit_code);
 
     /* Does not reach here ('return' statement keeps compiler happy). */
     return 0;

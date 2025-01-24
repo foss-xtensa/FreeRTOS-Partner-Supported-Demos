@@ -27,6 +27,8 @@
 #include "task.h"
 #include "semphr.h"
 
+#include <xtensa/xtutil.h>
+
 /*-----------------------------------------------------------*/
 
 void vAssertCalled( const char * pcFile,
@@ -36,6 +38,9 @@ void vAssertCalled( const char * pcFile,
 
     ( void ) pcFile;
     ( void ) ulLine;
+
+    // For easier debug... all demos are linked with libxtutil
+    xt_printf("vAssertCalled: %s:%d\n", pcFile, ulLine);
 
     taskENTER_CRITICAL();
     {
