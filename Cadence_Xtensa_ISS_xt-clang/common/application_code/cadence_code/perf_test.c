@@ -49,7 +49,7 @@ static uint32_t printStats = 1;
 static uint32_t clock_vals[TEST_ITER * 3] = {0};
 static char clock_interrupted[TEST_ITER * 3] = {0};
 static volatile uint32_t indx = 0;
-static uint32_t uiTaskResponse[4];
+static volatile uint32_t uiTaskResponse[4];
 static volatile uint32_t test_start = 0;
 static uint32_t test_total;
 static uint32_t test_max;
@@ -157,6 +157,7 @@ void sem_test(void * arg)
     uint32_t total = 0;
     uint32_t max   = 0;
     uint32_t i;
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
@@ -230,7 +231,18 @@ void sem_test(void * arg)
     // a higher priority thread is unblocked.
 
 
-    task_create(sem_get, "sem_get", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[0], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(sem_get, "sem_get", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[0], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require semaphore task and sem_get to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -311,6 +323,7 @@ void mutex_test(void * arg)
     uint32_t total;
     uint32_t max;
     uint32_t i;
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
     *pResponse = 0;
     printf("\nMutex timing test"
@@ -382,7 +395,18 @@ void mutex_test(void * arg)
     // Now measure the time taken to unlock a mutex + context switch when
     // a higher priority thread is unblocked.
 
-    task_create(mutex_get2, "mutex_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(mutex_get2, "mutex_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require mutex task and mutex_get2 to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -475,12 +499,17 @@ void event_test(void * arg)
     uint32_t max;
     uint32_t i;
 
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
 
     printf("\nEvent timing test"
            "\n-----------------\n");
+#if (defined SMP_TEST)
+    // Prevent event test from changing cores
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
 
     xGroupEvents = xEventGroupCreate();
     vSemaphoreCreateBinary(xSemaphore);
@@ -554,7 +583,14 @@ void event_test(void * arg)
     // a higher priority thread is unblocked.
 
     uiTaskResponse[1] = 0;
-    task_create(event_get2, "event_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(event_get2, "event_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    // Require event task and event_get2 to run on the same core for profiling
+    vTaskCoreAffinitySet(thandle, 1 << portGET_CORE_ID());
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -650,6 +686,7 @@ void msgq_test(void* arg)
     uint32_t delta;
     uint32_t get_avg, get_max, put_avg, put_max;
 
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
@@ -732,7 +769,18 @@ void msgq_test(void* arg)
     // a higher priority thread is unblocked.
 
     uiTaskResponse[1] = 0;
-    task_create(msg_get2, "msg_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(msg_get2, "msg_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require message task and msg_get2 to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -1008,15 +1056,33 @@ int main(void)
 int main_perf_test(int argc, char *argv[])
 #endif
 {
-    /* Print some stack related numbers. */
-    printf("STK_INTEXC_EXTRA  = %d\nXT_STK_FRMSZ      = %d\nXT_CP_SIZE        = %d\n"
-           "XT_XTRA_SIZE      = %d\nXT_USER_SIZE      = %d\nXT_STACK_MIN_SIZE = %d\n",
-           STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
-           XT_USER_SIZE, XT_STACK_MIN_SIZE);
+    if (portGET_CORE_ID() == 0) {
+        /* Print some stack related numbers. */
+        printf("STK_INTEXC_EXTRA  = %d\nXT_STK_FRMSZ      = %d\nXT_CP_SIZE        = %d\n"
+               "XT_XTRA_SIZE      = %d\nXT_USER_SIZE      = %d\nXT_STACK_MIN_SIZE = %d\n",
+               STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
+               XT_USER_SIZE, XT_STACK_MIN_SIZE);
 
-    task_create( test, "test", configMINIMAL_STACK_SIZE, (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
-    /* Finally start the scheduler. */
-    vTaskStartScheduler();
+#if (defined SMP_TEST)
+        {
+            TaskHandle_t thandle;
+            task_create( test, "test", configMINIMAL_STACK_SIZE,
+                         (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , &thandle );
+            // Pin primary test runner to core 0
+            vTaskCoreAffinitySet(thandle, 1);
+        }
+#else
+        task_create( test, "test", configMINIMAL_STACK_SIZE,
+                     (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
+#endif
+
+        /* Finally start the scheduler. */
+        vTaskStartScheduler();
+    } else {
+        /* For SMP_TEST, non-zero cores must start the port scheduler directly */
+        xPortStartScheduler();
+    }
+
     /* Will only reach here if there is insufficient heap available to start
     the scheduler. */
     for( ;; );
