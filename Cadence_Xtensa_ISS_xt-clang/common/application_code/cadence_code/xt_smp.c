@@ -25,10 +25,7 @@
 /*
 *********************************************************************************************************
 *
-*                                            SMP TEST
-*
-* This test starts a couple of tasks on one core and compares their runtime with running
-* the same tasks on multiple cores.
+*                                            SMP TESTS
 *
 *********************************************************************************************************
 */
@@ -50,6 +47,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
 
 /* Create task as privileged if MPU enabled. */
@@ -63,6 +61,10 @@
 
 /* Some basic task synchronization that relies on coherent shared memory */
 volatile uint32_t task_done[configNUMBER_OF_CORES];
+
+/* Global structures used for SMP tests */
+static SemaphoreHandle_t xSemA, xSemB;
+
 
 /* Initialize task control flags */
 static void task_ctrl_init(void)
@@ -81,7 +83,7 @@ static void task_ctrl_signal_done(int task_id) {
 /* Wait (yielding) until all tasks are done */
 static void task_ctrl_wait_yield(void)
 {
-    int core = xthal_get_coreid();
+    int core = portGET_CORE_ID();
     while (1) {
         int i;
         for (i = 0; i < TEST_TASK_COUNT; i++) {
@@ -108,7 +110,7 @@ static void Test_Task(void *pdata)
     char statstr[4] = ".";
 
     xt_printf("\nTask %d: Starting on core %d...\n",
-              (int)pdata, xthal_get_coreid());
+              (int)pdata, portGET_CORE_ID());
 
     for (i = 0; i < TEST_TASK_LOOPS; i++) {
         statstr[0] = '0' + (int)pdata;
@@ -130,16 +132,24 @@ static void Test_Task(void *pdata)
 }
 
 
-static void Core_Task(void *pdata)
+// SMP Task Test
+// -------------
+// Run several tasks that take a while to complete on core 0 and measure
+// their execution time.  Next, move each task to its own core and rerun
+// the same workload.  The result should be significantly faster, although
+// precisely how much faster depends on the scheduler.
+//
+// NOTE: tasks will not move between cores once started.
+//
+static int run_task_test(void)
 {
     TaskHandle_t tasks[configNUMBER_OF_CORES];
     int err, i;
     long start_ticks = 0, total_ticks_1core = 0, total_ticks_allcores = 0;
 
-    xt_printf("Core_Task started on core %d\n", xthal_get_coreid());
-    UNUSED(pdata);
+    xt_printf("SMP Task test started on core %d\n", portGET_CORE_ID());
 
-    if (xthal_get_coreid() > 0) {
+    if (portGET_CORE_ID() > 0) {
         xt_printf("err\n");
         exit(-1);
     }
@@ -149,11 +159,11 @@ static void Core_Task(void *pdata)
     start_ticks = xTaskGetTickCount();
     for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
         xt_printf("Creating task %d on core %d\n", i, 0);
-        err = xTaskCreateAffinitySet(Test_Task, 
-                                     "Test_Task", 
-                                     INIT_TASK_STK_SIZE, 
-                                     (void *)i, 
-                                     TASK_INIT_PRIO, 
+        err = xTaskCreateAffinitySet(Test_Task,
+                                     "Test_Task",
+                                     INIT_TASK_STK_SIZE,
+                                     (void *)i,
+                                     TASK_INIT_PRIO,
                                      1,     // core 0 only
                                      &(tasks[i]));
         if (err != pdPASS) {
@@ -173,11 +183,11 @@ static void Core_Task(void *pdata)
     start_ticks = xTaskGetTickCount();
     for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
         xt_printf("Creating task %d on core %d\n", i, i);
-        err = xTaskCreateAffinitySet(Test_Task, 
-                                     "Test_Task", 
-                                     INIT_TASK_STK_SIZE, 
-                                     (void *)i, 
-                                     TASK_INIT_PRIO, 
+        err = xTaskCreateAffinitySet(Test_Task,
+                                     "Test_Task",
+                                     INIT_TASK_STK_SIZE,
+                                     (void *)i,
+                                     TASK_INIT_PRIO,
                                      1 << i, // 1 task per core
                                      &(tasks[i]));
         if (err != pdPASS) {
@@ -194,12 +204,107 @@ static void Core_Task(void *pdata)
 
     /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
     if ((total_ticks_allcores * 2) < total_ticks_1core) {
-        xt_printf("PASSED!\n");
-    } else {
-        xt_printf("FAILED\n");
+        xt_printf("\nSMP Task test succeeded\n");
+        return 0;
     }
 
 done:
+    xt_printf("\nSMP Task test FAILED\n");
+    return 1;
+}
+
+
+/* Task to decrement and increment semaphores.  Will move between cores. */
+static void Sem_Task(void *pdata)
+{
+    int core_swaps = 0;
+    int i;
+
+    xt_printf("Sem Task: Starting on core %d...\n", portGET_CORE_ID());
+    for (i = 0; i < TEST_TASK_LOOPS; i++) {
+        xSemaphoreTake(xSemA, portMAX_DELAY);
+        xSemaphoreGive(xSemB);
+
+        if ((i % TEST_TASK_SLEEPS) == 0) {
+            int newcore = (portGET_CORE_ID() + 1) % configNUMBER_OF_CORES;
+            xt_printf("Migrating from core %d -> %d\n", portGET_CORE_ID(), newcore);
+            vTaskCoreAffinitySet(NULL, 1 << newcore);
+            taskYIELD();
+            xt_printf("Migrated to core %d\n", portGET_CORE_ID());
+            core_swaps++;
+        }
+    }
+
+    xt_printf("\nSem task complete\n");
+    *(int *)pdata = core_swaps;
+    vTaskDelete(NULL);
+}
+
+// SMP Semaphore Test
+// ------------------
+// Runs two tasks and initializes 2 semaphores.  Task A (this function)
+// will give semaphore A and take semaphore B, while Task B will take
+// semaphore A and give semaphore B.  Task A will always run on core 0,
+// while task B will be pinned to different cores and rescheduled
+// to confirm functionality across the system.
+//
+static int run_sem_test(void)
+{
+    TaskHandle_t task;
+    volatile int task_status = 0;
+    int err, i = 0;
+
+    xt_printf("\nSMP Sem test started on core %d\n", portGET_CORE_ID());
+
+    if (portGET_CORE_ID() > 0) {
+        xt_printf("err\n");
+        exit(-1);
+    }
+
+    xSemA = xSemaphoreCreateBinary();
+    xSemB = xSemaphoreCreateBinary();
+
+    /* Create test task running on the same core as a control test */
+    xt_printf("Creating sem test task on core 0\n");
+    err = xTaskCreateAffinitySet(Sem_Task,
+                                 "Sem_Task",
+                                 INIT_TASK_STK_SIZE,
+                                 (void *)&task_status,
+                                 TASK_INIT_PRIO,
+                                 1,     // core 0 only
+                                 &task);
+    if (err != pdPASS) {
+        xt_printf(" FAILED to create Sem_Task (core 0)\n");
+        return -1;
+    }
+    while (i++ < TEST_TASK_LOOPS) {
+        xSemaphoreGive(xSemA);
+        xSemaphoreTake(xSemB, portMAX_DELAY);
+    }
+
+    if (task_status != 0) {
+        xt_printf("SMP Sem test succeeded, swapped cores %d times\n", task_status);
+        return 0;
+    }
+    xt_printf("SMP Sem test FAILED\n");
+    return 1;
+}
+
+
+static void Core_Task(void *pdata)
+{
+    int status;
+
+    status = run_task_test();
+    status |= run_sem_test();
+
+    /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
+    if (status == 0) {
+        xt_printf("SMP tests PASSED!\n");
+    } else {
+        xt_printf("SMP tests FAILED\n");
+    }
+
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
     exit(0);
 
@@ -247,16 +352,16 @@ int main_xt_smp(int argc, char *argv[])
     TaskHandle_t handle;
 
     /* Display some core-specific output */
-    int core = xthal_get_coreid();
-    xt_printf("Test starting on core %d\n", core);
+    int core = portGET_CORE_ID();
+    xt_printf("\nTest starting on core %d\n", core);
 
-    if (xthal_get_coreid() == 0) {
+    if (portGET_CORE_ID() == 0) {
         /* Create the control task initially with the high priority. */
-        err = xTaskCreate(Core_Task, 
-                          "Core_Task", 
-                          INIT_TASK_STK_SIZE, 
-                          NULL, 
-                          TASK_INIT_PRIO, 
+        err = xTaskCreate(Core_Task,
+                          "Core_Task",
+                          INIT_TASK_STK_SIZE,
+                          NULL,
+                          TASK_INIT_PRIO,
                           &handle);
         if (err != pdPASS)
         {
@@ -264,7 +369,6 @@ int main_xt_smp(int argc, char *argv[])
             goto done;
         }
         vTaskCoreAffinitySet(handle, 1);    // Core 0 only
-        xt_printf("Created Core_Task on core 0\n");
 
         /* Start task scheduler */
         xt_printf("Scheduler starting on core %d\n", core);
