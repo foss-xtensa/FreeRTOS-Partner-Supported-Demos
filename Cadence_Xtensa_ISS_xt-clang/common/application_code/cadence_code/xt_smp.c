@@ -222,19 +222,23 @@ static void Sem_Task(void *pdata)
 
     xt_printf("Sem Task: Starting on core %d...\n", portGET_CORE_ID());
     for (i = 0; i < TEST_TASK_LOOPS; i++) {
-        xSemaphoreTake(xSemA, portMAX_DELAY);
+        int timeout_ticks = portGET_CORE_ID() ? 10 : 1;
         xSemaphoreGive(xSemB);
+        while (xSemaphoreTake(xSemA, timeout_ticks) != pdTRUE) {
+            // Attempt to take semaphore or yield if not available
+            taskYIELD();
+        }
 
         if ((i % TEST_TASK_SLEEPS) == 0) {
             int newcore = (portGET_CORE_ID() + 1) % configNUMBER_OF_CORES;
             xt_printf("Migrating from core %d -> %d\n", portGET_CORE_ID(), newcore);
             vTaskCoreAffinitySet(NULL, 1 << newcore);
-            taskYIELD();
             xt_printf("Migrated to core %d\n", portGET_CORE_ID());
             core_swaps++;
         }
     }
 
+    xSemaphoreGive(xSemB);
     xt_printf("\nSem task complete\n");
     *(int *)pdata = core_swaps;
     vTaskDelete(NULL);
@@ -277,9 +281,12 @@ static int run_sem_test(void)
         xt_printf(" FAILED to create Sem_Task (core 0)\n");
         return -1;
     }
-    while (i++ < TEST_TASK_LOOPS) {
+    for (i = 0; i < TEST_TASK_LOOPS; i++) {
         xSemaphoreGive(xSemA);
-        xSemaphoreTake(xSemB, portMAX_DELAY);
+        while (xSemaphoreTake(xSemB, 1) != pdTRUE) {
+            // Attempt to take semaphore or yield if not available in 1 tick
+            taskYIELD();
+        }
     }
 
     if (task_status != 0) {
