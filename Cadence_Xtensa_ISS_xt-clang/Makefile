@@ -92,7 +92,9 @@ ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
 ifeq ($(SMP),1)
-TEST_FILES += xt_smp.c
+TEST_FILES +=			\
+	xt_mc_demo.c		\
+	xt_smp.c
 endif
 
 EXE         = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.exe,$(TEST_FILES)))
