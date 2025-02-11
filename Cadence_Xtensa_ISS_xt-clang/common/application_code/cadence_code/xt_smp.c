@@ -151,7 +151,7 @@ static int run_task_test(void)
 
     if (portGET_CORE_ID() > 0) {
         xt_printf("err\n");
-        exit(-1);
+        test_exit(-1);
     }
 
     /* Create test tasks running on the same core as a control test */
@@ -262,7 +262,7 @@ static int run_sem_test(void)
 
     if (portGET_CORE_ID() > 0) {
         xt_printf("err\n");
-        exit(-1);
+        test_exit(-1);
     }
 
     xSemA = xSemaphoreCreateBinary();
@@ -313,7 +313,7 @@ static void Core_Task(void *pdata)
     }
 
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    exit(0);
+    test_exit(0);
 
     /* Terminate this task. OS will continue to run timer, stats and idle tasks. */
     vTaskDelete(NULL);
@@ -346,7 +346,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -391,7 +391,7 @@ done:
     exit_code = err;
 
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    exit(exit_code);
+    test_exit(exit_code);
 
     /* Does not reach here ('return' statement keeps compiler happy). */
     return 0;

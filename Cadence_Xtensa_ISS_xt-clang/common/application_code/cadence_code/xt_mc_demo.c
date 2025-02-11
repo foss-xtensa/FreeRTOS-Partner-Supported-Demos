@@ -249,7 +249,7 @@ matrix_task(void *pdata)
     }
     xtos_barrier_wait(&bar2);
 
-    exit(0);
+    test_exit(0);
 }
 
 
@@ -265,7 +265,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 

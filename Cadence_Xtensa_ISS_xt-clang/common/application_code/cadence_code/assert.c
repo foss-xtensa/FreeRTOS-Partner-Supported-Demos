@@ -23,6 +23,9 @@
 //-----------------------------------------------------------------------------
 
 /* Scheduler include files. */
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
@@ -54,3 +57,46 @@ void vAssertCalled( const char * pcFile,
     taskEXIT_CRITICAL();
 }
 /*-----------------------------------------------------------*/
+
+#if (defined SMP_TEST)
+
+// For SMP tests, include exit handling logic to gracefully stop XTSC
+// instead of allowing idle tasks and timer interrupts to run indefinitely
+//
+// Call exit() only on core 0 and _exit() on other cores.
+
+volatile int test_exit_called = 0;
+volatile int test_exit_code;
+
+// When called directly, call exit() on core 0 and _exit() on other cores
+void test_exit(int code)
+{
+    test_exit_code = code;
+    test_exit_called = 1;
+#if (configNUMBER_OF_CORES > 1)
+    if (portGET_CORE_ID() > 0) {
+        _exit(code);
+    }
+#endif
+    exit(code);
+}   
+
+// Use idle hook to check if test_exit() was called only on another core
+#if (configUSE_PASSIVE_IDLE_HOOK != 0)
+void vApplicationPassiveIdleHook( void )
+{
+    if (test_exit_called) {
+        test_exit(test_exit_code);
+    }
+}
+#endif  // configUSE_PASSIVE_IDLE_HOOK
+
+#else   // SMP_TEST
+
+void test_exit(int code)
+{
+    exit(code);
+}
+
+#endif  // SMP_TEST
+
