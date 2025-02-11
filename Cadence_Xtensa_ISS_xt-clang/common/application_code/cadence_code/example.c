@@ -114,6 +114,9 @@ void Count_Task( void * pdata )
 
     while ( 1 )
     {
+#if ( configNUMBER_OF_CORES > 1 )
+        PUTCHAR( '0' + portGET_CORE_ID() );
+#endif
         xQueueSend( Queue, (void *) &count, 2 );
         ++count;
         vTaskDelay( 1 );
@@ -125,6 +128,7 @@ void Count_Task( void * pdata )
         }
 #endif
     }
+    PRINTF( "[Count_Task] Loop done.\n" );
 
     // Send a last message to terminate the Report Task.
     count = 0xFFFFFFFF;
@@ -160,6 +164,7 @@ void Report_Task( void * pdata )
         if ( err == pdFAIL )
         {
             // Error
+            PRINTF( "\n[Report_Task] xQueueReceive() failed\n" );
             break;
         }
 
@@ -169,7 +174,11 @@ void Report_Task( void * pdata )
             break;
         }
 
+#if ( configNUMBER_OF_CORES > 1 )
+        PUTCHAR( 'a' + portGET_CORE_ID() );
+#else
         PUTCHAR( '.' );
+#endif
         if ( (count > 0) && (count % 10 == 0) )
         {
             PUTCHAR( ' ' );
@@ -273,7 +282,7 @@ done:
         PRINTF( "PASS\n" );
     }
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( exit_code );
+    test_exit( exit_code );
 #endif
 
     // Terminate this task. RTOS will continue to run other tasks.
@@ -294,7 +303,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
     UNUSED(pcTaskName);
 
     puts( "\nStack overflow, stopping." );
-    exit( 0 );
+    test_exit( 0 );
 }
 
 int main( int argc, char * argv[] )
@@ -303,6 +312,18 @@ int main( int argc, char * argv[] )
 
     UNUSED(argc);
     UNUSED(argv);
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        PRINTF( "vTaskStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+#endif
 
 #ifdef XT_BOARD
     // Display waypoint for debugging.

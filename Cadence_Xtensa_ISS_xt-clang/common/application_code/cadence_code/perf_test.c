@@ -34,7 +34,6 @@
 #include "event_groups.h"
 #include "queue.h"
 
-extern void exit(int);
 
 #define TEST_ITER  500
 #define PERF_TEST_PRIORITY      5  // Priorities will vary between 2 and 7
@@ -117,7 +116,7 @@ BaseType_t task_create( TaskFunction_t pvTaskCode,
                        uxPriority, pxCreatedTask);
     if (xret != pdPASS) {
         fprintf(stderr, "Error creating task '%s'\n", pcName);
-        exit(-1);
+        test_exit(-1);
     }
 
     return xret;
@@ -885,10 +884,20 @@ volatile unsigned unsolicited_done = 0;
 volatile unsigned unsolicited_cycles = 0;
 stats_t unsolicited_stats;
 
+#if (defined SMP_TEST)
+// Wait to run unsolicited test until both tasks land on the same core
+#define UNSOLICITED_TEST_CORE   (configNUMBER_OF_CORES / 2)
+#endif
+
 // Background task
 void unsolicited_background(void *arg)
 {
     UNUSED(arg);
+#if (defined SMP_TEST)
+    while (portGET_CORE_ID() != UNSOLICITED_TEST_CORE) {
+        vTaskDelay(10);
+    }
+#endif
     while (!unsolicited_done) {
         unsolicited_cycles = xthal_get_ccount();  // Keep recording the counter's value
     }
@@ -900,6 +909,12 @@ void unsolicited_hipriority(void *arg)
 {
     int i;
     UNUSED(arg);
+#if (defined SMP_TEST)
+    while ((portGET_CORE_ID() != UNSOLICITED_TEST_CORE) ||
+           (unsolicited_cycles == 0)) {
+        vTaskDelay(10);
+    }
+#endif
     for (i = 0; i < 16; i++) {
         vTaskDelay(10); // Give time to background task
         unsigned cycles = xthal_get_ccount() - unsolicited_cycles;
@@ -915,6 +930,8 @@ void unsolicited_hipriority(void *arg)
 //-----------------------------------------------------------------------------
 void unsolicitedTest(void)
 {
+    TaskHandle_t thd_bg_h, thd_hi_h;
+
     printf("\nUnsolicited context switch timing test"
            "\n--------------------------------------\n");
 
@@ -923,16 +940,25 @@ void unsolicitedTest(void)
     // Launch test threads
     vTaskPrioritySet( NULL, PERF_TEST_PRIORITY + 2);
 
-    task_create( unsolicited_background, "thd_bg", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL );
-    task_create( unsolicited_hipriority, "thd_hi", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 2), NULL );
+    task_create( unsolicited_background, "thd_bg", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thd_bg_h );
+#if (defined SMP_TEST)
+    // Pin unsolicited tasks to the same core so the stats make sense
+    vTaskCoreAffinitySet(thd_bg_h, 1 << UNSOLICITED_TEST_CORE);
+#endif
+    task_create( unsolicited_hipriority, "thd_hi", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 2), &thd_hi_h );
+#if (defined SMP_TEST)
+    // Pin unsolicited tasks to the same core so the stats make sense
+    vTaskCoreAffinitySet(thd_hi_h, 1 << UNSOLICITED_TEST_CORE);
+#endif
 
     portbenchmarkReset(); // If configBENCHMARK is enabled
 
     vTaskPrioritySet( NULL, PERF_TEST_PRIORITY);
 
     // Wait for them all to finish
-    while (!unsolicited_done)
+    while (!unsolicited_done) {
         vTaskDelay(50);
+    }
 
     // Calibrate read counter function (approximate calibration)
     unsigned calib = xthal_get_ccount();
@@ -1028,7 +1054,7 @@ void test(void* pArg)
     vTaskDelay(1);
     queueTest();
     printf("\nTest PASSED\n");
-    exit(0);
+    test_exit(0);
 }
 
 
@@ -1048,7 +1074,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(pcTaskName);
     /* For some reason printing pcTaskName is not working */
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -1056,33 +1082,39 @@ int main(void)
 int main_perf_test(int argc, char *argv[])
 #endif
 {
-    if (portGET_CORE_ID() == 0) {
-        /* Print some stack related numbers. */
-        printf("STK_INTEXC_EXTRA  = %d\nXT_STK_FRMSZ      = %d\nXT_CP_SIZE        = %d\n"
-               "XT_XTRA_SIZE      = %d\nXT_USER_SIZE      = %d\nXT_STACK_MIN_SIZE = %d\n",
-               STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
-               XT_USER_SIZE, XT_STACK_MIN_SIZE);
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
 
-#if (defined SMP_TEST)
-        {
-            TaskHandle_t thandle;
-            task_create( test, "test", configMINIMAL_STACK_SIZE,
-                         (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , &thandle );
-            // Pin primary test runner to core 0
-            vTaskCoreAffinitySet(thandle, 1);
-        }
-#else
-        task_create( test, "test", configMINIMAL_STACK_SIZE,
-                     (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
+        // If we got here then scheduler failed.
+        printf( "vTaskStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
 #endif
 
-        /* Finally start the scheduler. */
-        vTaskStartScheduler();
-    } else {
-        /* For SMP_TEST, non-zero cores must start the port scheduler directly */
-        xPortStartScheduler();
-    }
+    /* Print some stack related numbers. */
+    printf("STK_INTEXC_EXTRA  = %d\nXT_STK_FRMSZ      = %d\nXT_CP_SIZE        = %d\n"
+           "XT_XTRA_SIZE      = %d\nXT_USER_SIZE      = %d\nXT_STACK_MIN_SIZE = %d\n",
+           STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
+           XT_USER_SIZE, XT_STACK_MIN_SIZE);
 
+#if (defined SMP_TEST)
+    {
+        TaskHandle_t thandle;
+        task_create( test, "test", configMINIMAL_STACK_SIZE,
+                     (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , &thandle );
+        // Pin primary test runner to core 0
+        vTaskCoreAffinitySet(thandle, 1);
+    }
+#else
+    task_create( test, "test", configMINIMAL_STACK_SIZE,
+                 (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
+#endif
+
+    /* Finally start the scheduler. */
+    vTaskStartScheduler();
     /* Will only reach here if there is insufficient heap available to start
     the scheduler. */
     for( ;; );
