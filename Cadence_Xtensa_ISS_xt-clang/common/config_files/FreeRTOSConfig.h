@@ -76,6 +76,8 @@
 #define configRUN_MULTIPLE_PRIORITIES                   1
 #define configUSE_CORE_AFFINITY                         1
 #define configUSE_TASK_PREEMPTION_DISABLE               1
+#else
+#define configNUMBER_OF_CORES                           1
 #endif
 
 /* This has impact on speed of search for highest priority */
