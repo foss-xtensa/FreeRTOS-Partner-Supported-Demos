@@ -82,6 +82,26 @@ This test runs until manually terminated by the user and displays
 minimal output at occasional intervals.  Note that this test may run
 slowly in simulation and may not display output for several minutes.
 
+To build tests for an SMP FreeRTOS configuration, run "make all SMP=1".
+This will build the following SMP-specific tests, as well as all basic
+tests, linking them with the "sim-mc" LSP:
+
+    xt_smp.exe -- Multitasking and migrating semaphore test
+
+    xt_mc_demo.exe -- Multicore matrix multiplication performance test
+
+SMP-specific FreeRTOS config options can be found under in 
+common/config_files/FreeRTOSConfig.h under "SMP_TEST"
+
+
+Notes for version 3.10
+----------------------
+
+- Xtensa FreeRTOS port now supports SMP on LX coherent multicore clusters.
+  See Xtensa port README for port/implementation details and limitations.
+- SMP-specific tests added; existing tests updated to run on SMP configs.
+- Build instructions added for SMP tests.
+
 
 Notes for version 3.0
 ---------------------
