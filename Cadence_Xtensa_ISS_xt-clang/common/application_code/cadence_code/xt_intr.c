@@ -39,6 +39,8 @@
 #include "semphr.h"
 #include "task.h"
 
+#include "testcommon.h"
+
 /* Task priorities. */
 /*
  * NOTE: the consumer runs at a higher priority than the producer so as to
@@ -138,7 +140,7 @@ void softwareIntHandler(void* arg)
         junk++;
         if (iFlag == 44) {
             puts("Error: higher priority handler not run");
-            exit(-1);
+            test_exit(-1);
         }
         putchar('>');
     }
@@ -200,18 +202,6 @@ static void Task1(void *pvData)
     uint32_t i;
 
     UNUSED(pvData);
-
-    /* Set up interrupt handling and enable interrupt */
-    xt_set_interrupt_handler(uiSwIntNum, softwareIntHandler, (void*)xSem);
-    xt_interrupt_enable(uiSwIntNum);
-
-#if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
-    /* Set up the higher priority interrupt if available */
-    if (uiSwInt2Num) {
-        xt_set_interrupt_handler(uiSwInt2Num, softwareHighHandler, 0);
-        xt_interrupt_enable(uiSwInt2Num);
-    }
-#endif
 
     /* Now send messages to task 2 and signal it */
     for (i = 0; i < TEST_ITER; i++) {
@@ -322,7 +312,7 @@ static void Task2(void* pvData)
         puts("Xtensa interrupt/exception test (xt_intr) PASSED!");
     }
 
-    exit(0);
+    test_exit(0);
 }
 
 
@@ -339,8 +329,6 @@ static void initTask(void* pvData)
 
     UNUSED(pvData);
 
-    /* Create test semaphore. */
-    xSem = xSemaphoreCreateCounting( SEM_CNT, 0 );
     /* Create queue for sequence of counts. */
     xQueue = xQueueCreate(QUEUE_SIZE, 1 * sizeof(uint32_t));
 
@@ -372,7 +360,7 @@ static void initTask(void* pvData)
 done:
     /* Clean up and shut down. */
     if (err != pdPASS) {
-        exit(err);
+        test_exit(err);
     }
 
     vTaskDelete(NULL);
@@ -400,7 +388,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -411,6 +399,28 @@ int main_xt_intr(int argc, char *argv[])
     int32_t x = -1;
     int32_t y = -1;
     int32_t i;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+
+        // Interrupt handlers installed already by core 0; enable
+        // interrupts on all cores in case test tasks get rescheduled
+        xt_interrupt_enable(uiSwIntNum);
+#if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
+        // Set up the higher priority interrupt if available
+        if (uiSwInt2Num) {
+            xt_interrupt_enable(uiSwInt2Num);
+        }
+#endif
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+#endif
 
     /* Unbuffer stdout */
     setbuf(stdout, 0);
@@ -462,6 +472,21 @@ int main_xt_intr(int argc, char *argv[])
         uiSwInt2Num = y;
 #endif
     }
+
+    /* Create test semaphore. */
+    xSem = xSemaphoreCreateCounting( SEM_CNT, 0 );
+
+    /* Set up interrupt handling and enable interrupt */
+    xt_set_interrupt_handler(uiSwIntNum, softwareIntHandler, (void*)xSem);
+    xt_interrupt_enable(uiSwIntNum);
+
+#if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
+    /* Set up the higher priority interrupt if available */
+    if (uiSwInt2Num) {
+        xt_set_interrupt_handler(uiSwInt2Num, softwareHighHandler, 0);
+        xt_interrupt_enable(uiSwInt2Num);
+    }
+#endif
 
     xTaskCreate( initTask, "initTask", configMINIMAL_STACK_SIZE, (void *)NULL, INIT_TASK_PRIO, NULL );
     /* Finally start the scheduler. */

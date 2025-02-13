@@ -31,6 +31,8 @@
 #include "xtensa_api.h"
 #include "xtensa_timer.h"
 
+#include "testcommon.h"
+
 #include <xtensa/config/core.h>
 
 #if XT_TIMER_INDEX != 3 && XCHAL_TIMER3_INTERRUPT != XTHAL_TIMER_UNCONFIGURED
@@ -61,7 +63,7 @@
 static inline void show_results_and_exit(int rc)
 {
     printf("%s (%d)\n", rc == 0 ? "Passed" : "Failed", rc);
-    exit(rc);
+    test_exit(rc);
 }
 
 
@@ -206,7 +208,30 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 int main(void)
 {
 #ifdef OTHER_TIMER_INDEX
-    int err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+    int err;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+
+    // Pin Init_Task to the core processing timer ticks (usually core 0)
+    err = xTaskCreateAffinitySet(Init_Task,
+                                 "Init_Task",
+                                 TASK_STK_SIZE,
+                                 NULL,
+                                 INIT_TASK_PRIO,
+                                 1 << configTICK_CORE,
+                                 NULL);
+#else
+    err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+#endif
 
     if (err != pdPASS) {
         printf("FAILED! main\n");
@@ -215,7 +240,7 @@ int main(void)
 
     // Set stderr to unbuffered
     setvbuf(stderr, NULL, _IONBF, 0);
-	printf("XT_TIMER_INDEX %d OTHER_TIMER_INDEX %d\n", XT_TIMER_INDEX, OTHER_TIMER_INDEX);
+    printf("XT_TIMER_INDEX %d OTHER_TIMER_INDEX %d\n", XT_TIMER_INDEX, OTHER_TIMER_INDEX);
 
     vTaskStartScheduler();
     printf( "vTaskStartScheduler FAILED!\n" );

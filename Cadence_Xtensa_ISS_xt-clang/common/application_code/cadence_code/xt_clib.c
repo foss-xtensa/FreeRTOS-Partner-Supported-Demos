@@ -102,13 +102,13 @@ void Task_Func( void * pdata )
                 // A failure might mean that the hack definition of TCB in this file, xt_clib.c,
                 // is out of date with respect to the official definition in tasks.c.
                 printf( "Task %d, Bad reent ptr\n", val );
-                exit( 1 );
+                test_exit( 1 );
             }
         }
         else
         {
             printf( "Task %d, Bad TCB pointer!\n", val ); // This means there is some corruption
-            exit( 2 );
+            test_exit( 2 );
         }
 #else
   #error Unsupported C library
@@ -118,7 +118,7 @@ void Task_Func( void * pdata )
         if ( !test_p )
         {
             printf( "Task %d, malloc() failed\n", val );
-            exit( 3 );
+            test_exit( 3 );
         }
 
         if ( (val == 0) && (cnt % 100 == 99) )
@@ -195,7 +195,7 @@ static void Init_Task( void * pdata )
 done:
 #ifdef XT_SIMULATOR
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( 0 );
+    test_exit( 0 );
 #endif
 
     // Terminate this task. RTOS will continue to run timer, stats and idle tasks.
@@ -208,7 +208,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts( "\nStack overflow, stopping." );
-    exit( -1 );
+    test_exit( -1 );
 }
 
 
@@ -221,6 +221,18 @@ int main( void )
 {
     int err = 0;
     int exit_code = 0;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+#endif
 
     printf( TEST_PFX " running...\n" );
 
@@ -246,7 +258,7 @@ done:
 
 #ifdef XT_SIMULATOR
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( exit_code );
+    test_exit( exit_code );
 #endif
 
     return 0;

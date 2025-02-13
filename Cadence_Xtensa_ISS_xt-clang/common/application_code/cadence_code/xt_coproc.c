@@ -341,7 +341,7 @@ static void Init_Task(void *pdata)
 done:
     #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(exit_code);
+    test_exit(exit_code);
     #endif
 
     /* Terminate this task. RTOS will continue to run timer, stats and idle tasks. */
@@ -376,7 +376,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(int argc, char *argv[])
@@ -386,6 +386,18 @@ int main_xt_coproc(int argc, char *argv[])
 {
     int     err = 0;
     int     exit_code = 0;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+#endif
 
     if (argc > 1) {
         do_crash = 1;
@@ -417,7 +429,7 @@ done:
 
 #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(exit_code);
+    test_exit(exit_code);
 #endif
 
     /* Does not reach here ('return' statement keeps compiler happy). */
