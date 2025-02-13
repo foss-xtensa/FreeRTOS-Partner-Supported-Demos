@@ -320,7 +320,7 @@ int main( int argc, char * argv[] )
         (void) xPortStartScheduler();
 
         // If we got here then scheduler failed.
-        PRINTF( "vTaskStartScheduler FAILED!\n" );
+        PRINTF( "xPortStartScheduler FAILED!\n" );
         test_exit(-1);
     }
 #endif

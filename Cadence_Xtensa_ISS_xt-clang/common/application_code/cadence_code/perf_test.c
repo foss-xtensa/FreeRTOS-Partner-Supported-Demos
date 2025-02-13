@@ -1089,7 +1089,7 @@ int main_perf_test(int argc, char *argv[])
         (void) xPortStartScheduler();
 
         // If we got here then scheduler failed.
-        printf( "vTaskStartScheduler FAILED!\n" );
+        printf( "xPortStartScheduler FAILED!\n" );
         test_exit(-1);
     }
 #endif
