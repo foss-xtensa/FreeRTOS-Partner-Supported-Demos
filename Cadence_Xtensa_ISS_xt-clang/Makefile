@@ -213,7 +213,9 @@ endif
 $(LSPPATH)/.mkdir :
 	$(MKPATH) $(LSPPATH)
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)memmap.xmm $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)
+	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)$(S)specs.orig
+	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.orig > $(LSPPATH)$(S)specs.inter
+	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.inter > $(LSPPATH)$(S)specs
 	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm

@@ -90,6 +90,12 @@ tests, linking them with the "sim-mc" LSP:
 
     xt_mc_demo.exe -- Multicore matrix multiplication performance test
 
+NOTE: When building for SMP systems where the executable is only loaded
+on one core, e.g. Palladium, use a romable LSP to ensure per-cpu data are
+properly unpacked into each core's dataram.  This can be done by running
+"make all SMP=1 LSP=sim-mc-rom".  XTSC typically loads an executable onto
+each core, in which case romable LSPs may not be required.
+
 SMP-specific FreeRTOS config options can be found under in 
 common/config_files/FreeRTOSConfig.h under "SMP_TEST"
 

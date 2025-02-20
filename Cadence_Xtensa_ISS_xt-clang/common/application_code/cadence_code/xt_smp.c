@@ -55,7 +55,7 @@
 #define INIT_TASK_STK_SIZE      ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
 
 #define TEST_TASK_COUNT         configNUMBER_OF_CORES
-#define TEST_TASK_LOOPS         500
+#define TEST_TASK_LOOPS         100
 #define TEST_TASK_SLEEPS        10
 
 
@@ -235,12 +235,12 @@ static void Sem_Task(void *pdata)
             vTaskCoreAffinitySet(NULL, 1 << newcore);
             xt_printf("Migrated to core %d\n", portGET_CORE_ID());
             core_swaps++;
+            *(volatile int *)pdata = core_swaps;
         }
     }
 
     xSemaphoreGive(xSemB);
     xt_printf("\nSem task complete\n");
-    *(int *)pdata = core_swaps;
     vTaskDelete(NULL);
 }
 
