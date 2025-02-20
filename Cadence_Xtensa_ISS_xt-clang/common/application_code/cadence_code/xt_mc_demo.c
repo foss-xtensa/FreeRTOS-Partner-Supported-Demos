@@ -56,7 +56,7 @@
 // Set USE_MUTEX to zero to disable use of the FreeRTOS mutex.
 // The difference will be seen in the stdout output.
 #ifndef USE_MUTEX
-#define USE_MUTEX           0
+#define USE_MUTEX           1
 #endif
 
 #if USE_MUTEX
@@ -69,6 +69,7 @@
 
 // Print macro for convenience.
 #define PRINT(...)    { MLOCK(); printf("core%d: ", portGET_CORE_ID()); printf(__VA_ARGS__); MUNLOCK(); }
+#define PRINT_UNLOCKED(...)    { printf("core%d: ", portGET_CORE_ID()); printf(__VA_ARGS__); }
 
 // Task parameters
 #define TASK_PRIO           (20)
@@ -232,8 +233,8 @@ matrix_task(void *pdata)
 
     if (prid == 0) {
         MLOCK();
-        PRINT("single-core time : %u cycles\n", c4 - c3);
-        PRINT("multi-core time  : %u cycles\n", c2 - c1);
+        PRINT_UNLOCKED("single-core time : %u cycles\n", c4 - c3);
+        PRINT_UNLOCKED("multi-core time  : %u cycles\n", c2 - c1);
         MUNLOCK();
     }
     else {
