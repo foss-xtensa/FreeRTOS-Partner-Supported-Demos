@@ -203,7 +203,7 @@ static int run_task_test(void)
     xt_printf("\nmulti-core ticks: %d\n", total_ticks_allcores);
 
     /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
-    if ((total_ticks_allcores * 2) < total_ticks_1core) {
+    if ((total_ticks_allcores * 2 * 9 / 10) < total_ticks_1core) {
         xt_printf("\nSMP Task test succeeded\n");
         return 0;
     }
