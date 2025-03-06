@@ -1,5 +1,5 @@
 /*******************************************************************************
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -179,7 +179,7 @@ static void Init_Task(void *pdata)
 
     #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(!ok);
+    test_exit(!ok);
     #endif
 
     /* Terminate this task. OS will continue to run timer, stats and idle tasks. */
@@ -214,7 +214,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -224,6 +224,18 @@ int main_xt_alloca(int argc, char *argv[])
 {
     int err = 0;
     int exit_code = 0;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+#endif
 
     #ifdef XT_BOARD
     xtbsp_display_string("xt_alloca test");
@@ -246,7 +258,7 @@ done:
 
     #ifdef XT_SIMULATOR
     /* Shut down simulator and report error code as exit code to host (0 = OK). */
-    _exit(exit_code);
+    test_exit(exit_code);
     #endif
 
     /* Does not reach here ('return' statement keeps compiler happy). */

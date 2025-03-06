@@ -91,6 +91,11 @@ STRESS_COMM_C	= \
 ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
+ifeq ($(SMP),1)
+TEST_FILES +=			\
+	xt_mc_demo.c		\
+	xt_smp.c
+endif
 
 EXE         = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.exe,$(TEST_FILES)))
 COMM_OBJS   = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES)))
@@ -114,7 +119,11 @@ OSLIB_VERIF = $(BLDDIR)$(S)stress$(S)libfreertos.a
 
 ifeq ($(TARGET),sim)
 DFLAGS      = -DXT_SIMULATOR
+ifeq ($(SMP),1)
+LSP         = sim-mc
+else
 LSP         = sim
+endif
 endif
 ifeq ($(TARGET),ml605)
 DFLAGS      = -DXT_BOARD
@@ -130,7 +139,11 @@ ifeq ($(MPU),1)
 LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
 MPUFLAGS    = -DportUSING_MPU_WRAPPERS=1 -DportALIGN_SECTIONS
 else
+ifeq ($(SMP),1)
+LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
+else
 LSPPATH     = $(LSP)
+endif
 endif
 
 # Build options. Override CFLAGS from the make command line if desired.
@@ -145,10 +158,16 @@ else
 CFLAGS     ?= -O2
 endif
 CFLAGS     += -g -Wall -Werror
+ifeq ($(SMP),1)
+CFLAGS     += -DSMP_TEST
+endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
 LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
+ifeq ($(SMP),1)
+LDFLAGS    += -Wl,--orphan-handling=place
+endif
 
 CFLAGS_mpu_basic = -O0
 CFLAGS_xt_coproc = -O3
@@ -194,7 +213,9 @@ endif
 $(LSPPATH)/.mkdir :
 	$(MKPATH) $(LSPPATH)
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)memmap.xmm $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)
+	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)$(S)specs.orig
+	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.orig > $(LSPPATH)$(S)specs.inter
+	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.inter > $(LSPPATH)$(S)specs
 	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
@@ -213,17 +234,19 @@ $(BLDDIR)/stress/.mkdir : $(BLDDIR)/.mkdir
 	@echo "" > $@
 
 ifeq ($(MPU),1)
-MPULSP = $(LSPPATH)/.mkdir
-lsptest : $(LSPPATH)/.mkdir
+CUSTLSP = $(LSPPATH)/.mkdir
+endif
+ifeq ($(SMP),1)
+CUSTLSP = $(LSPPATH)/.mkdir
 endif
 
-$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(MPULSP)
+$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
-$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(MPULSP)
+$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm
 
 $(BLDDIR)/stress/%.o : stress/%.c $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSLIB_VERIF)
@@ -256,6 +279,8 @@ xt_alloca : $(BLDDIR)/xt_alloca.exe
 xt_clib   : $(BLDDIR)/xt_clib.exe
 
 xt_intr   : $(BLDDIR)/xt_intr.exe
+
+xt_smp    : $(BLDDIR)/xt_smp.exe
 
 stress   : $(BLDDIR)/stress/stress.exe
 

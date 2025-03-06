@@ -82,6 +82,43 @@ This test runs until manually terminated by the user and displays
 minimal output at occasional intervals.  Note that this test may run
 slowly in simulation and may not display output for several minutes.
 
+To build tests for an SMP FreeRTOS configuration, run "make all SMP=1".
+This will build the following SMP-specific tests, as well as all basic
+tests, linking them with the "sim-mc" LSP:
+
+    xt_smp.exe -- Multitasking and migrating semaphore test
+
+    xt_mc_demo.exe -- Multicore matrix multiplication performance test
+
+NOTE: When building for SMP systems where the executable is only loaded
+on one core, e.g. Palladium, use a romable LSP to ensure per-cpu data are
+properly unpacked into each core's dataram.  This can be done by running
+"make all SMP=1 LSP=sim-mc-rom".  XTSC typically loads an executable onto
+each core, in which case romable LSPs may not be required.
+
+SMP-specific FreeRTOS config options can be found under in 
+common/config_files/FreeRTOSConfig.h under "SMP_TEST"
+
+The SMP tests will build by default to be run on the Xtensa SystemC
+simulator (xtsc-run). A reference XTSC model for coherent multicore clusters
+can be found in the Xtensa toolchain installation under
+xtensa-elf/src/xtos/examples/mc_coherent/.
+
+However, one important change is required for this model to function
+correctly with SMP FreeRTOS: all non-zero cores must be held in RunStall
+until core 0 begins running and vTaskStartScheduler() releases them after
+initializing shared structures.  A manual change to subsys.yml is required,
+which is detailed in the README.TXT located in this directory.
+
+
+Notes for version 3.10
+----------------------
+
+- Xtensa FreeRTOS port now supports SMP on LX coherent multicore clusters.
+  See Xtensa port README for port/implementation details and limitations.
+- SMP-specific tests added; existing tests updated to run on SMP configs.
+- Build instructions added for SMP tests.
+
 
 Notes for version 3.0
 ---------------------
