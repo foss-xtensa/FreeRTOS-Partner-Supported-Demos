@@ -99,6 +99,17 @@ each core, in which case romable LSPs may not be required.
 SMP-specific FreeRTOS config options can be found under in 
 common/config_files/FreeRTOSConfig.h under "SMP_TEST"
 
+The SMP tests will build by default to be run on the Xtensa SystemC
+simulator (xtsc-run). A reference XTSC model for coherent multicore clusters
+can be found in the Xtensa toolchain installation under
+xtensa-elf/src/xtos/examples/mc_coherent/.
+
+However, one important change is required for this model to function
+correctly with SMP FreeRTOS: all non-zero cores must be held in RunStall
+until core 0 begins running and vTaskStartScheduler() releases them after
+initializing shared structures.  A manual change to subsys.yml is required,
+which is detailed in the README.TXT located in this directory.
+
 
 Notes for version 3.10
 ----------------------
