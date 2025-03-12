@@ -39,6 +39,15 @@
 #include "semphr.h"
 #include "task.h"
 
+#include "testcommon.h"
+
+#if XCHAL_HAVE_XEA3 && XCHAL_HAVE_VISION
+#include <xtensa/tie/xt_ivpn.h>
+#define IMPR_EXC     1
+#else
+#define IMPR_EXC     0
+#endif
+
 /* Task priorities. */
 /*
  * NOTE: the consumer runs at a higher priority than the producer so as to
@@ -49,6 +58,7 @@
 #define TASK_0_PRIO       (6 | portPRIVILEGE_BIT)
 #define TASK_1_PRIO       (8 | portPRIVILEGE_BIT)
 #define TASK_2_PRIO       (7 | portPRIVILEGE_BIT)
+#define TASK_IMP_PRIO     (8 | portPRIVILEGE_BIT)
 
 /* Test iterations */
 #define TEST_ITER         1000
@@ -112,6 +122,77 @@ void illegalInstHandler(XtExcFrame *frame)
     frame->pc += 3;
     puts("e");
 }
+
+
+#if IMPR_EXC
+
+/* Static data needed by this test. */
+int DataArr[128] __attribute__ ((section(".dram0.data")));
+volatile xb_vecN_2x32v hvecA;
+xb_vecN_2x32Uv         hvecOff;
+vboolN_2               boolA;
+
+TaskHandle_t           xTaskImpHandle;
+volatile int           impr_exc_count = 0;
+int                    impr_result = 0;
+
+/*
+*******************************************************************************
+* Test function. Will force an imprecise exception.
+*******************************************************************************
+*/
+static void
+impr_func(void *pvData)
+{
+    hvecOff = (IVP_SEQN_2X32() << 2) - (xb_vecN_2x32v) 9; /* bad offset */
+    boolA   = IVP_GEN_2X32(hvecOff, (xb_vecN_2x32v) 0);
+    hvecA   = IVP_GATHERN_2X32T(DataArr, hvecOff, boolA);
+    (void) hvecA;
+
+    while (impr_exc_count == 0)
+        ;
+
+    /* Pass if execution gets here after taking an imprecise exception */
+    impr_result = 1;
+    vTaskDelete(NULL);
+}
+
+/*
+*******************************************************************************
+* Imprecise exception handler.  Catch imprecise address exception, verify the
+* exception type is as expected, then clear the exception condition and return.
+*******************************************************************************
+*/
+void exchandler2(XtExcFrame *frame)
+{
+    /* Check cause type. */
+    if ((frame->exccause & EXCCAUSE_FULLTYPE_MASK) != EXC_TYPE_GS_UNALIGNED_ADDR) {
+        printf("Error: exception cause 0x%x does not match expected cause 0x%x.\n",
+            (frame->exccause & EXCCAUSE_FULLTYPE_MASK), EXC_TYPE_GS_UNALIGNED_ADDR);
+        vTaskDelete(NULL);
+    }
+    /* Check that imprecise exception occurred. */
+    if (((frame->exccause & EXCCAUSE_IMPR_MASK) >> EXCCAUSE_IMPR_SHIFT) != 0x3) {
+        printf("Error: imprecise exception flags not set as expected.\n");
+        vTaskDelete(NULL);
+    }
+    /* Clear the exception condition. This requires clearing the pending
+     * bits in both IEEXTERN and IEVEC unless we figure out exactly where
+     * the exception came from.
+     * Note that terminating the thread here is difficult because this
+     * exception is being handled in 'interrupt context' - the handler
+     * is running on the interrupt stack.
+     */
+    XT_WSR_IEEXTERN(XT_RSR_IEEXTERN() & ~0x3);
+    XT_WSR_IEVEC(XT_RSR_IEVEC() & ~0x3);
+    XT_RSYNC();
+    /* Regenerate correct data values. */
+    hvecOff = (IVP_SEQN_2X32() << 2) - (xb_vecN_2x32v) 12; /* good offset. */
+    boolA   = IVP_GEN_2X32(hvecOff, (xb_vecN_2x32v) 0);
+    impr_exc_count++;
+}
+
+#endif
 
 
 /*
@@ -280,7 +361,7 @@ static void Task2(void* pvData)
 #endif
 
     if (uiTask1MessagesSent == uiTask2MessagesReceived) {
-        puts("Interrupt Test PASS");
+        puts("Interrupt Test OK");
         iok = 1;
     }
     else {
@@ -311,15 +392,44 @@ static void Task2(void* pvData)
     }
 
     if (iExcCount == 10) {
-        puts("Exception Test PASS");
+        puts("Exception Test OK");
         eok = 1;
     }
     else {
         puts("Exception Test FAIL");
     }
 
+#if IMPR_EXC
+
+    /* Now test imprecise exception handling (XEA3-only) */
+    xt_set_exception_handler(EXCCAUSE_ADDRESS, exchandler2);
+
+    if (xTaskCreate(impr_func, "ImprExc", TASK_STK_SIZE_STD, 
+                    (void*)0, TASK_IMP_PRIO, &xTaskImpHandle) != pdPASS)
+    {
+        puts("ImprExc task create FAIL");
+        eok = 0;
+    }
+
+    /* Wait until imprecise test task completes */
+    do {
+        vTaskDelay(10);
+    } while (eTaskGetState(xTaskImpHandle) != eDeleted);
+
+    if (impr_result == 1) {
+        puts("Imprecise Exception Test OK");
+    }
+    else {
+        puts("Exception Test FAIL");
+        eok = 0;
+    }
+
+#endif
+
     if (iok && eok) {
         puts("Xtensa interrupt/exception test (xt_intr) PASSED!");
+    } else {
+        puts("Xtensa interrupt/exception test (xt_intr) FAILED!");
     }
 
     exit(0);
@@ -435,6 +545,7 @@ int main_xt_intr(int argc, char *argv[])
 
     if (x == -1) {
         printf("No software interrupt found.\n");
+        printf("Skipping test (PASSED).\n");
         return 0;
     }
 
