@@ -504,6 +504,9 @@ int main(void)
 int main_xt_intr(int argc, char *argv[])
 #endif
 {
+#if XCHAL_HAVE_XEA3
+    int32_t rtos_int_found = 0;
+#endif
     int32_t x = -1;
     int32_t y = -1;
     int32_t i;
@@ -539,6 +542,13 @@ int main_xt_intr(int argc, char *argv[])
     for (i = 0; i < XCHAL_NUM_INTERRUPTS; i++) {
         if ((Xthal_inttype[i] == XTHAL_INTTYPE_SOFTWARE) &&
 			(Xthal_intlevel[i] <= XCHAL_EXCM_LEVEL)) {
+#if XCHAL_HAVE_XEA3
+            if (!rtos_int_found) {
+                printf("Reserve interrupt %d for RTOS\n", i);
+                rtos_int_found = 1;
+                continue;
+            }
+#endif
             printf("interrupt %d\n", i);
             if (x == -1) {
                 x = i;

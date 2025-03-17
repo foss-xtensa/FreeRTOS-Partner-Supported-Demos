@@ -75,7 +75,7 @@
 #define TASK_PRIO           (20)
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
 
-#define NUM_CORES           configNUMBER_OF_CORES
+#define NUM_CORES           (configNUMBER_OF_CORES)
 
 // Global objects shared by all cores. Note bar0 is initialized
 // statically so we don't have to call init on it before use.
@@ -88,13 +88,20 @@ SemaphoreHandle_t mtx0;
 
 // Try to keep the row size a multiple of the L1 cache line size.
 #ifndef ROW_SIZE
-#define ROW_SIZE            (NUM_CORES * 32)
+#define ROW_SIZE    ((NUM_CORES * 32) > 128 ? 128 : (NUM_CORES * 32))
 #endif
-#define COL_SIZE            ROW_SIZE
+#define COL_SIZE    ROW_SIZE
 
+// Place the 'size' field at the end to ensure the matrix rows
+// are cache line aligned as far as possible. If hardware FP
+// support is available, use FP data.
 typedef struct matrix {
-    uint32_t size;
+#if XCHAL_HAVE_FP
+    float    elements[ROW_SIZE][COL_SIZE];
+#else
     uint32_t elements[ROW_SIZE][COL_SIZE];
+#endif
+    uint32_t size;
 } matrix __attribute__ ((aligned(XCHAL_DCACHE_LINESIZE)));
 
 // Global data structures shared by all cores.
@@ -132,7 +139,11 @@ check_matrix(const matrix * m1, const matrix * m2, uint32_t prid)
     for (i = 0; i < m1->size; i++) {
         for (j = 0; j < m1->size; j++) {
             if (m1->elements[i][j] != m2->elements[i][j]) {
+#if XCHAL_HAVE_FP
+                PRINT("mismatch at %u,%u, %f <-> %f\n", i, j,
+#else
                 PRINT("mismatch at %u,%u, %u <-> %u\n", i, j,
+#endif
                       m1->elements[i][j], m2->elements[i][j]);
                 err++;
             }
@@ -188,6 +199,7 @@ matrix_task(void *pdata)
     uint32_t prid = portGET_CORE_ID();
 
     if (prid == 0) {
+        PRINT("core 0 starting...\n");
         // Generate the input matrices.
         PRINT("Test matrix size is %u x %u\n", ROW_SIZE, COL_SIZE);
         generate_matrix(&in1, ROW_SIZE);
