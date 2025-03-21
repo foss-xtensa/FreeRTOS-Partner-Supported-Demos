@@ -43,7 +43,11 @@ void vAssertCalled( const char * pcFile,
     ( void ) ulLine;
 
     // For easier debug... all demos are linked with libxtutil
+#if (configNUMBER_OF_CORES == 1)
     xt_printf("vAssertCalled: %s:%d\n", pcFile, ulLine);
+#else
+    xt_printf("vAssertCalled (core %d): %s:%d\n", portGET_CORE_ID(), pcFile, ulLine);
+#endif
 
     taskENTER_CRITICAL();
     {

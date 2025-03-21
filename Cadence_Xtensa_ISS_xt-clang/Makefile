@@ -104,6 +104,7 @@ SRC_FILES   = $(TEST_FILES)
 
 STRESS_O    = \
 	$(addprefix $(BLDDIR)/stress/,$(STRESS_BASE_O)) \
+	$(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES))) \
 	$(addprefix $(BLDDIR)/stress/Common/Minimal/,$(patsubst %.c,%.o,$(STRESS_COMM_C)))
 
 # Search paths
@@ -163,6 +164,10 @@ CFLAGS     += -DSMP_TEST
 endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
+
+# VERIF options: 1-5 - run various subsets of all stress tests briefly and exit
+#                0   - run all stress tests indefinitely until cancelled by user
+VERIF      ?= 0
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
 LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
 ifeq ($(SMP),1)

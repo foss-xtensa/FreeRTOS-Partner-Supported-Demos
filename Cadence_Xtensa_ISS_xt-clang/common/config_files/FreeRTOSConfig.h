@@ -273,11 +273,11 @@
 /* Enable printf (for verif.exe).  Note that calls are wrapped in double parentheses. */
 #define configPRINTF( X )			printf X
 
-#define CFG1    ((CONFIG_VERIF == 1) ? 1 : 0)
-#define CFG2    ((CONFIG_VERIF == 2) ? 1 : 0)
-#define CFG3    ((CONFIG_VERIF == 3) ? 1 : 0)
-#define CFG4    ((CONFIG_VERIF == 4) ? 1 : 0)
-#define CFG5    ((CONFIG_VERIF == 5) ? 1 : 0)
+#define CFG1    (((CONFIG_VERIF == 0) || (CONFIG_VERIF == 1)) ? 1 : 0)
+#define CFG2    (((CONFIG_VERIF == 0) || (CONFIG_VERIF == 2)) ? 1 : 0)
+#define CFG3    (((CONFIG_VERIF == 0) || (CONFIG_VERIF == 3)) ? 1 : 0)
+#define CFG4    (((CONFIG_VERIF == 0) || (CONFIG_VERIF == 4)) ? 1 : 0)
+#define CFG5    (((CONFIG_VERIF == 0) || (CONFIG_VERIF == 5)) ? 1 : 0)
 
 /* Additional configuration for verif.exe) */
 #define configSTART_TASK_NOTIFY_TESTS             CFG1
@@ -305,11 +305,13 @@
 #define configSTART_INTERRUPT_QUEUE_TESTS         CFG5
 #define configSTART_REGISTER_TESTS                CFG5
 #define configSTART_DELETE_SELF_TESTS             CFG5
+#define configSTRESS_TEST_CONTINUOUS              (CONFIG_VERIF == 0)
 
-#if configSTART_INTERRUPT_QUEUE_TESTS
+#if (configSTART_INTERRUPT_QUEUE_TESTS || configSTART_TIMER_TESTS)
 
-/* Interrupt tests require timer tick to use lowest-priority interrupt
- * so that it can be preempted.
+/* Interrupt queuing tests require timer tick to use lowest-priority
+ * interrupt so that it can be preempted.
+ * Timer tests require 2 timers <= EXCM_LEVEL.
  */
 #ifndef XT_TIMER_INDEX
   #if XCHAL_TIMER3_INTERRUPT != XTHAL_TIMER_UNCONFIGURED
@@ -362,12 +364,18 @@
       (XCHAL_INT_LEVEL(XCHAL_TIMER0_INTERRUPT) <= XCHAL_EXCM_LEVEL)
     #define XT_TIMER_NEST   0
   #endif
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER0_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_2ND    0
+  #endif
 #endif
 #if (XCHAL_TIMER1_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
     (XT_TIMER_INDEX != 1) && !(defined XT_TIMER_NEST)
   #if (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) > XT_TIMER_LEVEL) && \
       (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) <= XCHAL_EXCM_LEVEL)
     #define XT_TIMER_NEST   1
+  #endif
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_2ND    1
   #endif
 #endif
 #if (XCHAL_TIMER2_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
@@ -376,6 +384,9 @@
       (XCHAL_INT_LEVEL(XCHAL_TIMER2_INTERRUPT) <= XCHAL_EXCM_LEVEL)
     #define XT_TIMER_NEST   2
   #endif
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER2_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_2ND    2
+  #endif
 #endif
 #if (XCHAL_TIMER3_INTERRUPT != XTHAL_TIMER_UNCONFIGURED) && \
     (XT_TIMER_INDEX != 3) && !(defined XT_TIMER_NEST)
@@ -383,13 +394,22 @@
       (XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) <= XCHAL_EXCM_LEVEL)
     #define XT_TIMER_NEST   3
   #endif
+  #if (XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #define XT_TIMER_2ND    3
+  #endif
 #endif
-#if !(defined(XT_TIMER_NEST))
+
+#if configSTART_INTERRUPT_QUEUE_TESTS && !(defined(XT_TIMER_NEST))
   #undef  configSTART_INTERRUPT_QUEUE_TESTS
   #define configSTART_INTERRUPT_QUEUE_TESTS 0
 #endif
 
-#endif /* configSTART_INTERRUPT_QUEUE_TESTS */
+#if configSTART_TIMER_TESTS && !(defined(XT_TIMER_2ND))
+  #undef  configSTART_TIMER_TESTS
+  #define configSTART_TIMER_TESTS 0
+#endif
+
+#endif /* (configSTART_INTERRUPT_QUEUE_TESTS || configSTART_TIMER_TESTS) */
 
 #endif /* CONFIG_VERIF */
 
