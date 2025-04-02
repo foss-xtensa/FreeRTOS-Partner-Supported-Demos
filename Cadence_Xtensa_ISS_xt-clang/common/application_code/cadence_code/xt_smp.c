@@ -358,34 +358,37 @@ int main_xt_smp(int argc, char *argv[])
     int exit_code = 0;
     TaskHandle_t handle;
 
+    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
+    if (portGET_CORE_ID() > 0) {
+        portDISABLE_INTERRUPTS();
+        (void) xPortStartScheduler();
+
+        // If we got here then scheduler failed.
+        xt_printf( "xPortStartScheduler FAILED!\n" );
+        test_exit(-1);
+    }
+
     /* Display some core-specific output */
     int core = portGET_CORE_ID();
     xt_printf("\nTest starting on core %d\n", core);
 
-    if (portGET_CORE_ID() == 0) {
-        /* Create the control task initially with the high priority. */
-        err = xTaskCreate(Core_Task,
-                          "Core_Task",
-                          INIT_TASK_STK_SIZE,
-                          NULL,
-                          TASK_INIT_PRIO,
-                          &handle);
-        if (err != pdPASS)
-        {
-            xt_printf(" FAILED to create Core_Task\n");
-            goto done;
-        }
-        vTaskCoreAffinitySet(handle, 1);    // Core 0 only
+	/* Create the control task initially with the high priority. */
+	err = xTaskCreate(Core_Task,
+					  "Core_Task",
+					  INIT_TASK_STK_SIZE,
+					  NULL,
+					  TASK_INIT_PRIO,
+					  &handle);
+	if (err != pdPASS)
+	{
+		xt_printf(" FAILED to create Core_Task\n");
+		goto done;
+	}
+	vTaskCoreAffinitySet(handle, 1);    // Core 0 only
 
-        /* Start task scheduler */
-        xt_printf("Scheduler starting on core %d\n", core);
-        vTaskStartScheduler();
-    } else {
-        /* Start task scheduler */
-        xt_printf("Scheduler starting on core %d\n", core);
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-    }
+	/* Start task scheduler */
+	xt_printf("Scheduler starting on core %d\n", core);
+	vTaskStartScheduler();
 
 done:
     exit_code = err;

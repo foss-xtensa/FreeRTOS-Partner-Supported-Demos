@@ -135,16 +135,12 @@ DFLAGS      = -DXT_BOARD
 LSP         = xtkc705-rt
 endif
 
-# Build with MPU support
+# Build with MPU support requires LSP modifications and additional flags
 ifeq ($(MPU),1)
 LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
 MPUFLAGS    = -DportUSING_MPU_WRAPPERS=1 -DportALIGN_SECTIONS
 else
-ifeq ($(SMP),1)
-LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
-else
 LSPPATH     = $(LSP)
-endif
 endif
 
 # Build options. Override CFLAGS from the make command line if desired.
@@ -218,9 +214,6 @@ endif
 $(LSPPATH)/.mkdir :
 	$(MKPATH) $(LSPPATH)
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)memmap.xmm $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)$(S)specs.orig
-	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.orig > $(LSPPATH)$(S)specs.inter
-	sed -e 's/-lsim/-lgdbio/' $(LSPPATH)$(S)specs.inter > $(LSPPATH)$(S)specs
 	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
@@ -241,18 +234,15 @@ $(BLDDIR)/stress/.mkdir : $(BLDDIR)/.mkdir
 ifeq ($(MPU),1)
 CUSTLSP = $(LSPPATH)/.mkdir
 endif
-ifeq ($(SMP),1)
-CUSTLSP = $(LSPPATH)/.mkdir
-endif
 
 $(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
 $(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm -lgdbio
 
 $(BLDDIR)/stress/%.o : stress/%.c $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSLIB_VERIF)
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<

@@ -82,6 +82,10 @@ This test runs until manually terminated by the user and displays
 minimal output at occasional intervals.  Note that this test may run
 slowly in simulation and may not display output for several minutes.
 
+
+How to Build and Run SMP Tests
+------------------------------
+
 To build tests for an SMP FreeRTOS configuration, run "make all SMP=1".
 This will build the following SMP-specific tests, as well as all basic
 tests, linking them with the "sim-mc" LSP:
@@ -90,25 +94,31 @@ tests, linking them with the "sim-mc" LSP:
 
     xt_mc_demo.exe -- Multicore matrix multiplication performance test
 
-NOTE: When building for SMP systems where the executable is only loaded
-on one core, e.g. Palladium, use a romable LSP to ensure per-cpu data are
-properly unpacked into each core's dataram.  This can be done by running
-"make all SMP=1 LSP=sim-mc-rom".  XTSC typically loads an executable onto
-each core, in which case romable LSPs may not be required.
-
-SMP-specific FreeRTOS config options can be found under in 
-common/config_files/FreeRTOSConfig.h under "SMP_TEST"
-
-The SMP tests will build by default to be run on the Xtensa SystemC
+These SMP tests will build by default to be run on the Xtensa SystemC
 simulator (xtsc-run). A reference XTSC model for coherent multicore clusters
 can be found in the Xtensa toolchain installation under
 xtensa-elf/src/xtos/examples/mc_coherent/.
 
-However, one important change is required for this model to function
+** IMPORTANT NOTE ** -- one change is required for this model to function
 correctly with SMP FreeRTOS: all non-zero cores must be held in RunStall
 until core 0 begins running and vTaskStartScheduler() releases them after
-initializing shared structures.  A manual change to subsys.yml is required,
-which is detailed in the README.TXT located in this directory.
+initializing shared data structures.  A manual change to subsys.yml is
+required, which is detailed in the README.TXT located in that directory.
+
+When building for Palladium emulation using VDebug + OCD, or for Protium
+or board targets that connect over OCD with a debug probe, the default
+FreeRTOS SMP build requires the user to connect N xt-gdb sessions for an
+N-core system (either via multiple command-line sessions or via Xplorer)
+and to load the executable on each core.  This is required in part because
+(a) each core's dataram contents must be initialized since not all "mc"
+LSPs are romable, and (b) the default SMP build uses libgdio to redirect
+console output to OCD.  Alternately, building with a romable LSP via
+"make all SMP=1 LSP=sim-mc-rom" allows the user to load the executable
+only onto core 0, although multiple xt-gdb sessions are still required
+to properly handle libgdio console redirection.
+
+SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
+common/config_files/FreeRTOSConfig.h
 
 
 Notes for version 3.10
