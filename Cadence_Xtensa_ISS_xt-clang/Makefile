@@ -212,8 +212,7 @@ endif
 # NOTE: Older xt-genldscripts does not support "ALIGN SECTIONS ..." so attempt to gracefully omit it
 # if it exits with an error
 $(LSPPATH)/.mkdir :
-	$(MKPATH) $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)memmap.xmm $(LSPPATH)
+	xt-regenlsps -f -mlsp=$(LSP) -b $(LSPPATH)
 	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
