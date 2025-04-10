@@ -81,6 +81,18 @@
 
 #define NTASKS      4
 
+#if (defined SMP_TEST)
+/* For SMP configs, there are 2 options for co-processor management, which correspond
+ * to the following values of SMP_TEST_COPROC_PIN_CORE:
+ *   1. Keep each FP task on the same core to use "lazy" CP context switch
+ *      which is more efficient, minimizing state save/restore during preemption.
+ *   0. Allow FP tasks to move between cores, which requires full save/restore
+ *      on every context switch.  Slower but stresses the system more for testing.
+ */
+//#define SMP_TEST_COPROC_PIN_CORE		1
+#define SMP_TEST_COPROC_PIN_CORE		0
+#endif
+
 /*
 Parameters to crunch() are chosen to ensure different values in each task so that if the
 co-processor context-switch is incorrect they will not converge on their expected values.
@@ -158,6 +170,13 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
             vTaskDelete(NULL);
         }
 
+#if ((defined SMP_TEST) && !SMP_TEST_COPROC_PIN_CORE)
+        if (task != NULL) {
+            // Request this task change cores on context switch
+            vTaskCoreAffinitySet(NULL, 1 << ((portGET_CORE_ID() + 1) % configNUMBER_OF_CORES) );
+        }
+#endif
+
         /*
         Solicit context-switch to exercise exception handler not saving state.
         However compiler saves/restores state around function calls, so test 
@@ -201,6 +220,10 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
 void Task0(void *pdata)
 {
     UNUSED(pdata);
+#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+    // This task uses a coprocessor; pin to core for context switch efficiency
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
     result[0] = crunch(Task_TCB[0], TASK0_PARAMS);
     if (result[0] == 0) result[0] = -1;
     vTaskDelete(NULL);
@@ -210,6 +233,10 @@ void Task0(void *pdata)
 void Task1(void *pdata)
 {
     UNUSED(pdata);
+#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+    // This task uses a coprocessor; pin to core for context switch efficiency
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
     result[1] = crunch(Task_TCB[1], TASK1_PARAMS);
     if (result[1] == 0) result[1] = -1;
     vTaskDelete(NULL);
@@ -219,6 +246,10 @@ void Task1(void *pdata)
 void Task2(void *pdata)
 {
     UNUSED(pdata);
+#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+    // This task uses a coprocessor; pin to core for context switch efficiency
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
     result[2] = crunch(Task_TCB[2], TASK2_PARAMS);
     if (result[2] == 0) result[2] = -1;
     vTaskDelete(NULL);
@@ -228,6 +259,10 @@ void Task2(void *pdata)
 void Task3(void *pdata)
 {
     UNUSED(pdata);
+#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+    // This task uses a coprocessor; pin to core for context switch efficiency
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
     result[3] = crunch(Task_TCB[3], TASK3_PARAMS);
     if (result[3] == 0) result[3] = -1;
     vTaskDelete(NULL);
@@ -260,12 +295,15 @@ static void Init_Task(void *pdata)
         result[i] = 0.0;
 
     /* Compute the expected values before multitasking starts (no CP exception). */
+    t0 = xTaskGetTickCount();
     expect[0] = crunch(NULL, TASK0_PARAMS);
     expect[1] = crunch(NULL, TASK1_PARAMS);
     expect[2] = crunch(NULL, TASK2_PARAMS);
     expect[3] = crunch(NULL, TASK3_PARAMS);
+    t1 = xTaskGetTickCount();
 
 #ifdef DIAGNOSTICS
+    printf("Baseline: (%u ticks)\n", t1-t0);
     for (i=0; i<NTASKS; ++i)
         printf("expect[%u] == %f\n", i, expect[i]);
 #endif
@@ -319,7 +357,7 @@ static void Init_Task(void *pdata)
 
     /* Report results. */
     #ifdef DIAGNOSTICS
-    printf("(%u ticks)\n", t1-t0);
+    printf("Results: (%u ticks)\n", t1-t0);
     for (i=0; i<NTASKS; ++i)
         printf("result[%u] == %f, exp = %f\n", i, result[i], expect[i]);
     #endif
@@ -407,14 +445,23 @@ int main_xt_coproc(int argc, char *argv[])
     UNUSED(argv);
     printf("Number of coprocessors = %d\n", XCHAL_CP_NUM);
     printf("You should verify that there is a float coprocessor!\n");
+    printf("(XCHAL_HAVE_FP = %d)\n", XCHAL_HAVE_FP);
 
     #ifdef XT_BOARD
     xtbsp_display_string("xt_coproc test");
     #endif
     puts("Running...\n");
 
+#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+	printf("SMP test: prevent coproc tasks from migrating cores\n");
+    err = xTaskCreateAffinitySet(Init_Task, "Init_Task", TASK_STK_SIZE_STD, NULL, TASK_INIT_PRIO, 1 << 0, NULL);
+#else
+#if (defined SMP_TEST)
+	printf("SMP test: force coproc tasks to migrate cores\n");
+#endif
     /* Create the control task initially with the high priority. */
     err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE_STD, NULL, TASK_INIT_PRIO, NULL);
+#endif
     if (err != pdPASS)
     {
         puts("FAILED to create Init_Task\n");

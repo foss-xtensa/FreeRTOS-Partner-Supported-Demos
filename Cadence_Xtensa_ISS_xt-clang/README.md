@@ -94,6 +94,9 @@ tests, linking them with the "sim-mc" LSP:
 
     xt_mc_demo.exe -- Multicore matrix multiplication performance test
 
+The FreeRTOS SMP configuration option is not compatible with the 
+MPU and Overlay options that are described above.
+
 These SMP tests will build by default to be run on the Xtensa SystemC
 simulator (xtsc-run). A reference XTSC model for coherent multicore clusters
 can be found in the Xtensa toolchain installation under
