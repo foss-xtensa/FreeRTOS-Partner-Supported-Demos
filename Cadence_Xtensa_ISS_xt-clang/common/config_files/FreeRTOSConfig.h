@@ -375,6 +375,9 @@
     #define XT_TIMER_NEST   1
   #endif
   #if (XCHAL_INT_LEVEL(XCHAL_TIMER1_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #ifdef  XT_TIMER_2ND
+    #undef  XT_TIMER_2ND
+    #endif
     #define XT_TIMER_2ND    1
   #endif
 #endif
@@ -385,6 +388,9 @@
     #define XT_TIMER_NEST   2
   #endif
   #if (XCHAL_INT_LEVEL(XCHAL_TIMER2_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #ifdef  XT_TIMER_2ND
+    #undef  XT_TIMER_2ND
+    #endif
     #define XT_TIMER_2ND    2
   #endif
 #endif
@@ -395,6 +401,9 @@
     #define XT_TIMER_NEST   3
   #endif
   #if (XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) <= XCHAL_EXCM_LEVEL)
+    #ifdef  XT_TIMER_2ND
+    #undef  XT_TIMER_2ND
+    #endif
     #define XT_TIMER_2ND    3
   #endif
 #endif
