@@ -1,0 +1,18 @@
+NOTICE:
+
+The updated Xtensa FreeRTOS is at
+https://github.com/foss-xtensa/FreeRTOS
+
+Xtensa port with commit abc2210 in
+https://github.com/foss-xtensa/FreeRTOS-Kernel-Partner-Supported-Ports
+
+Demo with commit ad6f238 in
+https://github.com/foss-xtensa/FreeRTOS-Partner-Supported-Demos
+
+This is for demo purpose, do not use it for your projects. Please ensure that
+you get the latest updates from github.
+
+This does not include all demos, MPU and overlay demos should run from the
+Makefile provided in the github repository.
+
+Feb. 2025
