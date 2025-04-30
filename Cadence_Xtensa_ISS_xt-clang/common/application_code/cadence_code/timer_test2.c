@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2024 Cadence Design Systems, Inc.
+// Copyright (c) 2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -31,7 +31,13 @@
 #include "xtensa_api.h"
 #include "xtensa_timer.h"
 
+#include "testcommon.h"
+
 #include <xtensa/config/core.h>
+
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
 
 #if XT_TIMER_INDEX != 3 && XCHAL_TIMER3_INTERRUPT != XTHAL_TIMER_UNCONFIGURED
   #if XCHAL_INT_LEVEL(XCHAL_TIMER3_INTERRUPT) <= XCHAL_EXCM_LEVEL
@@ -61,14 +67,14 @@
 static inline void show_results_and_exit(int rc)
 {
     printf("%s (%d)\n", rc == 0 ? "Passed" : "Failed", rc);
-    exit(rc);
+    test_exit(rc);
 }
 
 
-#ifdef OTHER_TIMER_INDEX
-
 #define INIT_TASK_PRIO      (4 + portPRIVILEGE_BIT)
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x400) / sizeof(StackType_t))
+
+#ifdef OTHER_TIMER_INDEX
 
 struct timer_data
 {
@@ -162,10 +168,17 @@ static void timer1(void *p)
     UNUSED(p);
 }
 
+#endif  // OTHER_TIMER_INDEX
+
 static void Init_Task(void *pdata)
 {
+#ifdef OTHER_TIMER_INDEX
     struct timer_data td[1] = {};
     uint32_t delta;
+
+    // Set stderr to unbuffered
+    setvbuf(stderr, NULL, _IONBF, 0);
+    printf("XT_TIMER_INDEX %d OTHER_TIMER_INDEX %d\n", XT_TIMER_INDEX, OTHER_TIMER_INDEX);
 
     UNUSED(pdata);
     set_ccompare(0);
@@ -185,9 +198,11 @@ static void Init_Task(void *pdata)
     }
     printf("Done\n");
     show_results_and_exit(rc);
+#else
+    printf( "no acceptable timer for early wakeup test\n" );
+    show_results_and_exit(0);
+#endif  // OTHER_TIMER_INDEX
 }
-
-#endif
 
 #if configUSE_TICK_HOOK
 void vApplicationTickHook(void)
@@ -205,24 +220,27 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 
 int main(void)
 {
-#ifdef OTHER_TIMER_INDEX
-    int err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+    int err;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Pin Init_Task to the core processing timer ticks (usually core 0)
+    err = xTaskCreateAffinitySet(Init_Task,
+                                 "Init_Task",
+                                 TASK_STK_SIZE,
+                                 NULL,
+                                 INIT_TASK_PRIO,
+                                 1 << configTICK_CORE,
+                                 NULL);
+#else
+    err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+#endif
 
     if (err != pdPASS) {
         printf("FAILED! main\n");
         return 1;
     }
 
-    // Set stderr to unbuffered
-    setvbuf(stderr, NULL, _IONBF, 0);
-	printf("XT_TIMER_INDEX %d OTHER_TIMER_INDEX %d\n", XT_TIMER_INDEX, OTHER_TIMER_INDEX);
-
     vTaskStartScheduler();
     printf( "vTaskStartScheduler FAILED!\n" );
     return 1;
-#else
-    printf( "no acceptable timer for early wakeup test\n" );
-    show_results_and_exit(0);
-    return 0;
-#endif
 }

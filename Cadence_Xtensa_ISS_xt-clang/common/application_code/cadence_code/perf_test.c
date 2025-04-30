@@ -1,5 +1,5 @@
 /*******************************************************************************
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -34,10 +34,13 @@
 #include "event_groups.h"
 #include "queue.h"
 
-extern void exit(int);
 
 #define TEST_ITER  500
 #define PERF_TEST_PRIORITY      5  // Priorities will vary between 2 and 7
+
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
 
 //-----------------------------------------------------------------------------
 // Thread function for yield test. Store current cycle count and yield the
@@ -49,7 +52,7 @@ static uint32_t printStats = 1;
 static uint32_t clock_vals[TEST_ITER * 3] = {0};
 static char clock_interrupted[TEST_ITER * 3] = {0};
 static volatile uint32_t indx = 0;
-static uint32_t uiTaskResponse[4];
+static volatile uint32_t uiTaskResponse[4];
 static volatile uint32_t test_start = 0;
 static uint32_t test_total;
 static uint32_t test_max;
@@ -117,7 +120,7 @@ BaseType_t task_create( TaskFunction_t pvTaskCode,
                        uxPriority, pxCreatedTask);
     if (xret != pdPASS) {
         fprintf(stderr, "Error creating task '%s'\n", pcName);
-        exit(-1);
+        test_exit(-1);
     }
 
     return xret;
@@ -157,6 +160,7 @@ void sem_test(void * arg)
     uint32_t total = 0;
     uint32_t max   = 0;
     uint32_t i;
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
@@ -230,7 +234,18 @@ void sem_test(void * arg)
     // a higher priority thread is unblocked.
 
 
-    task_create(sem_get, "sem_get", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[0], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(sem_get, "sem_get", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[0], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require semaphore task and sem_get to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -311,6 +326,7 @@ void mutex_test(void * arg)
     uint32_t total;
     uint32_t max;
     uint32_t i;
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
     *pResponse = 0;
     printf("\nMutex timing test"
@@ -382,7 +398,18 @@ void mutex_test(void * arg)
     // Now measure the time taken to unlock a mutex + context switch when
     // a higher priority thread is unblocked.
 
-    task_create(mutex_get2, "mutex_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(mutex_get2, "mutex_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require mutex task and mutex_get2 to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -475,12 +502,17 @@ void event_test(void * arg)
     uint32_t max;
     uint32_t i;
 
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
 
     printf("\nEvent timing test"
            "\n-----------------\n");
+#if (defined SMP_TEST)
+    // Prevent event test from changing cores
+    vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+#endif
 
     xGroupEvents = xEventGroupCreate();
     vSemaphoreCreateBinary(xSemaphore);
@@ -554,7 +586,14 @@ void event_test(void * arg)
     // a higher priority thread is unblocked.
 
     uiTaskResponse[1] = 0;
-    task_create(event_get2, "event_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(event_get2, "event_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    // Require event task and event_get2 to run on the same core for profiling
+    vTaskCoreAffinitySet(thandle, 1 << portGET_CORE_ID());
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -650,6 +689,7 @@ void msgq_test(void* arg)
     uint32_t delta;
     uint32_t get_avg, get_max, put_avg, put_max;
 
+    TaskHandle_t thandle;
     volatile uint32_t* pResponse = (volatile uint32_t*)arg;
 
     *pResponse = 0;
@@ -732,7 +772,18 @@ void msgq_test(void* arg)
     // a higher priority thread is unblocked.
 
     uiTaskResponse[1] = 0;
-    task_create(msg_get2, "msg_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL);
+    task_create(msg_get2, "msg_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
+
+#if (defined SMP_TEST)
+    {
+        // Require message task and msg_get2 to run on the same core for profiling
+        int core = portGET_CORE_ID();
+        vTaskCoreAffinitySet(NULL, 1 << core);
+        vTaskCoreAffinitySet(thandle, 1 << core);
+    }
+#else
+    UNUSED(thandle);
+#endif
 
     test_total = 0;
     test_max = 0;
@@ -837,10 +888,20 @@ volatile unsigned unsolicited_done = 0;
 volatile unsigned unsolicited_cycles = 0;
 stats_t unsolicited_stats;
 
+#if (defined SMP_TEST)
+// Wait to run unsolicited test until both tasks land on the same core
+#define UNSOLICITED_TEST_CORE   (configNUMBER_OF_CORES / 2)
+#endif
+
 // Background task
 void unsolicited_background(void *arg)
 {
     UNUSED(arg);
+#if (defined SMP_TEST)
+    while (portGET_CORE_ID() != UNSOLICITED_TEST_CORE) {
+        vTaskDelay(10);
+    }
+#endif
     while (!unsolicited_done) {
         unsolicited_cycles = xthal_get_ccount();  // Keep recording the counter's value
     }
@@ -852,6 +913,12 @@ void unsolicited_hipriority(void *arg)
 {
     int i;
     UNUSED(arg);
+#if (defined SMP_TEST)
+    while ((portGET_CORE_ID() != UNSOLICITED_TEST_CORE) ||
+           (unsolicited_cycles == 0)) {
+        vTaskDelay(10);
+    }
+#endif
     for (i = 0; i < 16; i++) {
         vTaskDelay(10); // Give time to background task
         unsigned cycles = xthal_get_ccount() - unsolicited_cycles;
@@ -867,6 +934,8 @@ void unsolicited_hipriority(void *arg)
 //-----------------------------------------------------------------------------
 void unsolicitedTest(void)
 {
+    TaskHandle_t thd_bg_h, thd_hi_h;
+
     printf("\nUnsolicited context switch timing test"
            "\n--------------------------------------\n");
 
@@ -875,16 +944,25 @@ void unsolicitedTest(void)
     // Launch test threads
     vTaskPrioritySet( NULL, PERF_TEST_PRIORITY + 2);
 
-    task_create( unsolicited_background, "thd_bg", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), NULL );
-    task_create( unsolicited_hipriority, "thd_hi", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 2), NULL );
+    task_create( unsolicited_background, "thd_bg", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thd_bg_h );
+#if (defined SMP_TEST)
+    // Pin unsolicited tasks to the same core so the stats make sense
+    vTaskCoreAffinitySet(thd_bg_h, 1 << UNSOLICITED_TEST_CORE);
+#endif
+    task_create( unsolicited_hipriority, "thd_hi", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 2), &thd_hi_h );
+#if (defined SMP_TEST)
+    // Pin unsolicited tasks to the same core so the stats make sense
+    vTaskCoreAffinitySet(thd_hi_h, 1 << UNSOLICITED_TEST_CORE);
+#endif
 
     portbenchmarkReset(); // If configBENCHMARK is enabled
 
     vTaskPrioritySet( NULL, PERF_TEST_PRIORITY);
 
     // Wait for them all to finish
-    while (!unsolicited_done)
+    while (!unsolicited_done) {
         vTaskDelay(50);
+    }
 
     // Calibrate read counter function (approximate calibration)
     unsigned calib = xthal_get_ccount();
@@ -980,7 +1058,7 @@ void test(void* pArg)
     vTaskDelay(1);
     queueTest();
     printf("\nTest PASSED\n");
-    exit(0);
+    test_exit(0);
 }
 
 
@@ -1000,7 +1078,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(pcTaskName);
     /* For some reason printing pcTaskName is not working */
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -1014,7 +1092,19 @@ int main_perf_test(int argc, char *argv[])
            STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
            XT_USER_SIZE, XT_STACK_MIN_SIZE);
 
-    task_create( test, "test", configMINIMAL_STACK_SIZE, (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
+#if (defined SMP_TEST)
+    {
+        TaskHandle_t thandle;
+        task_create( test, "test", configMINIMAL_STACK_SIZE,
+                     (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , &thandle );
+        // Pin primary test runner to core 0
+        vTaskCoreAffinitySet(thandle, 1);
+    }
+#else
+    task_create( test, "test", configMINIMAL_STACK_SIZE,
+                 (void *)NULL, portPRIVILEGE_BIT | PERF_TEST_PRIORITY , NULL );
+#endif
+
     /* Finally start the scheduler. */
     vTaskStartScheduler();
     /* Will only reach here if there is insufficient heap available to start
