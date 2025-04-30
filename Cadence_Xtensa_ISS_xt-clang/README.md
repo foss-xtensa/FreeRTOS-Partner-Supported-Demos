@@ -83,6 +83,63 @@ minimal output at occasional intervals.  Note that this test may run
 slowly in simulation and may not display output for several minutes.
 
 
+How to Build and Run SMP Tests
+------------------------------
+
+To build tests for an SMP FreeRTOS configuration, run "make all SMP=1".
+This will build the following SMP-specific tests, as well as all basic
+tests, linking them with the "sim-mc" LSP:
+
+    xt_smp.exe -- Multitasking and migrating semaphore test
+
+    xt_mc_demo.exe -- Multicore matrix multiplication performance test
+
+The FreeRTOS SMP configuration option is not compatible with the
+MPU and Overlay options that are described above.
+
+These SMP tests will build by default to be run on the Xtensa SystemC
+simulator (xtsc-run). A reference XTSC model for coherent multicore clusters
+can be found in the Xtensa toolchain installation under
+xtensa-elf/src/xtos/examples/mc_coherent/.
+
+When building for Palladium emulation using VDebug + OCD, or for Protium
+or board targets that connect over OCD with a debug probe, the default
+FreeRTOS SMP build requires the user to connect N xt-gdb sessions for an
+N-core system (either via multiple command-line sessions or via Xplorer)
+and to load the executable on each core.  This is required in part because
+the default SMP build uses libgdio to redirect console output to OCD.
+Alternately, building with a romable LSP allows the user to load the
+executable only onto core 0, although multiple xt-gdb sessions are still
+required to properly handle libgdio console redirection.
+
+SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
+common/config_files/FreeRTOSConfig.h
+
+
+Notes for version 3.11
+----------------------
+
+- Xtensa FreeRTOS SMP port only calls main() on core 0.  Non-zero cores
+  enter the scheduler direclty.  Example tests modified accordingly.
+- Xtensa FreeRTOS SMP port now supports configurations without DRAM.
+- Xtensa FreeRTOS SMP port no longer requires non-zero cores to be
+  held in RunStall upon startup.
+
+
+Notes for version 3.10
+----------------------
+
+- Xtensa FreeRTOS port now supports SMP on LX coherent multicore clusters.
+  See Xtensa port README for port/implementation details and limitations.
+- SMP-specific tests added; existing tests updated to run on SMP configs.
+- Build instructions added for SMP tests.
+- One change is required for the above XTSC model to function correctly
+  with SMP FreeRTOS v3.10: all non-zero cores must be held in RunStall
+  until core 0 begins running and vTaskStartScheduler() releases them
+  after initializing shared data structures.  A manual change to subsys.yml
+  is required, which is detailed in the README.TXT located in that directory.
+
+
 Notes for version 3.0
 ---------------------
 

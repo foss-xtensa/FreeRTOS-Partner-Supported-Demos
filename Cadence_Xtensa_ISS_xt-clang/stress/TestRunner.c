@@ -610,7 +610,9 @@ uint32_t xTestMask = 0;
 		#endif /* configSTART_DELETE_SELF_TESTS */
 
 		configPRINTF( ( "%s (test mask 0x%08x)\r\n", pcStatusMessage, xTestMask ) );
+#if (defined configSTRESS_TEST_CONTINUOUS) && !configSTRESS_TEST_CONTINUOUS
 		exit(strcmp(pcStatusMessage, "No errors"));
+#endif
 	}
 }
 /*-----------------------------------------------------------*/

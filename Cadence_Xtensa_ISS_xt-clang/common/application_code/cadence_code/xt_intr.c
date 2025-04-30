@@ -1,5 +1,5 @@
 /*******************************************************************************
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -40,6 +40,10 @@
 #include "task.h"
 
 #include "testcommon.h"
+
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY is required for this test in SMP mode
+#endif
 
 #if XCHAL_HAVE_XEA3 && XCHAL_HAVE_VISION
 #include <xtensa/tie/xt_ivpn.h>
@@ -219,7 +223,7 @@ void softwareIntHandler(void* arg)
         junk++;
         if (iFlag == 44) {
             puts("Error: higher priority handler not run");
-            exit(-1);
+            test_exit(-1);
         }
         putchar('>');
     }
@@ -281,18 +285,6 @@ static void Task1(void *pvData)
     uint32_t i;
 
     UNUSED(pvData);
-
-    /* Set up interrupt handling and enable interrupt */
-    xt_set_interrupt_handler(uiSwIntNum, softwareIntHandler, (void*)xSem);
-    xt_interrupt_enable(uiSwIntNum);
-
-#if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
-    /* Set up the higher priority interrupt if available */
-    if (uiSwInt2Num) {
-        xt_set_interrupt_handler(uiSwInt2Num, softwareHighHandler, 0);
-        xt_interrupt_enable(uiSwInt2Num);
-    }
-#endif
 
     /* Now send messages to task 2 and signal it */
     for (i = 0; i < TEST_ITER; i++) {
@@ -432,7 +424,7 @@ static void Task2(void* pvData)
         puts("Xtensa interrupt/exception test (xt_intr) FAILED!");
     }
 
-    exit(0);
+    test_exit(0);
 }
 
 
@@ -447,10 +439,120 @@ static void initTask(void* pvData)
 {
     BaseType_t err = 0;
 
-    UNUSED(pvData);
+#if XCHAL_HAVE_XEA3
+    int32_t rtos_int_found = 0;
+#endif
+    int32_t x = -1;
+    int32_t y = -1;
+    int32_t i;
+
+    /* Unbuffer stdout */
+    setbuf(stdout, 0);
+
+    puts("Xtensa interrupt/exception test (xt_intr) running...");
+
+    /* Find one or two sw interrupts <= XCHAL_EXCM_LEVEL */
+    for (i = 0; i < XCHAL_NUM_INTERRUPTS; i++) {
+        if ((Xthal_inttype[i] == XTHAL_INTTYPE_SOFTWARE) &&
+            (Xthal_intlevel[i] <= XCHAL_EXCM_LEVEL)) {
+#if XCHAL_HAVE_XEA3
+            if (!rtos_int_found) {
+                printf("Reserve interrupt %d for RTOS\n", i);
+                rtos_int_found = 1;
+                continue;
+            }
+#endif
+            printf("interrupt %d\n", i);
+            if (x == -1) {
+                x = i;
+            }
+            else {
+                y = i;
+                if (Xthal_intlevel[y] != Xthal_intlevel[x])
+                    break;
+            }
+        }
+    }
+
+    if (x == -1) {
+        printf("No software interrupt found.\n");
+        printf("Skipping test (PASSED).\n");
+		test_exit(0);
+        return;
+    }
+
+    /* Set default */
+    uiSwIntNum = (uint32_t)x;
+
+    if (y == -1) {
+        printf("Second sw interrupt not found, nested test will not run.\n");
+    }
+    else {
+#if XCHAL_HAVE_XEA2 && defined(XT_USE_SWPRI)
+        if (Xthal_intlevel[x] == Xthal_intlevel[y]) {
+            printf("Both interrupts at same priority, nested test will not run.\n");
+            uiSwIntNum = (uint32_t)x;
+        }
+        else {
+            uiSwIntNum  = (uint32_t)(Xthal_intlevel[x] > Xthal_intlevel[y] ? y : x);
+            uiSwInt2Num = (uint32_t)(Xthal_intlevel[x] > Xthal_intlevel[y] ? x : y);
+        }
+#endif
+#if XCHAL_HAVE_XEA3
+        xthal_interrupt_pri_set(x, INT_LO_PRI);
+        xthal_interrupt_pri_set(y, INT_HI_PRI);
+        uiSwIntNum  = x;
+        uiSwInt2Num = y;
+#endif
+    }
 
     /* Create test semaphore. */
     xSem = xSemaphoreCreateCounting( SEM_CNT, 0 );
+
+    /* Set up interrupt handler; will be enabled later */
+    xt_set_interrupt_handler(uiSwIntNum, softwareIntHandler, (void*)xSem);
+
+#if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
+    /* Set up the higher priority interrupt handler if available */
+    if (uiSwInt2Num) {
+        xt_set_interrupt_handler(uiSwInt2Num, softwareHighHandler, 0);
+    }
+#endif
+
+#if ( configNUMBER_OF_CORES > 1 )
+
+    // This task will start on core 0.  Enable interrupts and then cycle through
+    // all cores and back to core 0 before continuing with init.
+    int core, newcore;
+    for (core = 0; core < configNUMBER_OF_CORES; core++) {
+        // Interrupt handlers installed already by core 0; enable
+        // interrupts on all cores in case test tasks get rescheduled
+        xt_interrupt_enable(uiSwIntNum);
+  #if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
+        // Set up the higher priority interrupt if available
+        if (uiSwInt2Num) {
+            xt_interrupt_enable(uiSwInt2Num);
+        }
+  #endif
+        xt_printf("Enabled SW interrupts on core %d\n", portGET_CORE_ID());
+        newcore = (portGET_CORE_ID() + 1) % configNUMBER_OF_CORES;
+        vTaskCoreAffinitySet(NULL, 1 << newcore);
+    }
+
+#else // ( configNUMBER_OF_CORES > 1 )
+
+    xt_interrupt_enable(uiSwIntNum);
+  #if defined(XT_USE_SWPRI) || XCHAL_HAVE_XEA3
+    // Set up the higher priority interrupt if available
+    if (uiSwInt2Num) {
+        xt_interrupt_enable(uiSwInt2Num);
+    }
+  #endif
+
+#endif // ( configNUMBER_OF_CORES > 1 )
+
+    UNUSED(pvData);
+
     /* Create queue for sequence of counts. */
     xQueue = xQueueCreate(QUEUE_SIZE, 1 * sizeof(uint32_t));
 
@@ -482,7 +584,7 @@ static void initTask(void* pvData)
 done:
     /* Clean up and shut down. */
     if (err != pdPASS) {
-        exit(err);
+        test_exit(err);
     }
 
     vTaskDelete(NULL);
@@ -510,7 +612,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts("\nStack overflow, stopping.");
-    exit(0);
+    test_exit(0);
 }
 
 int main(void)
@@ -518,65 +620,21 @@ int main(void)
 int main_xt_intr(int argc, char *argv[])
 #endif
 {
-    int32_t x = -1;
-    int32_t y = -1;
-    int32_t i;
-
-    /* Unbuffer stdout */
-    setbuf(stdout, 0);
-
-    puts("Xtensa interrupt/exception test (xt_intr) running...");
-
-    /* Find one or two sw interrupts <= XCHAL_EXCM_LEVEL */
-    for (i = 0; i < XCHAL_NUM_INTERRUPTS; i++) {
-        if ((Xthal_inttype[i] == XTHAL_INTTYPE_SOFTWARE) &&
-			(Xthal_intlevel[i] <= XCHAL_EXCM_LEVEL)) {
-            printf("interrupt %d\n", i);
-            if (x == -1) {
-                x = i;
-            }
-            else {
-                y = i;
-                if (Xthal_intlevel[y] != Xthal_intlevel[x])
-                    break;
-            }
-        }
-    }
-
-    if (x == -1) {
-        printf("No software interrupt found.\n");
-        printf("Skipping test (PASSED).\n");
-        return 0;
-    }
-
-    /* Set default */
-    uiSwIntNum = (uint32_t)x;
-
-    if (y == -1) {
-        printf("Second sw interrupt not found, nested test will not run.\n");
-    }
-    else {
-#if XCHAL_HAVE_XEA2 && defined(XT_USE_SWPRI)
-        if (Xthal_intlevel[x] == Xthal_intlevel[y]) {
-            printf("Both interrupts at same priority, nested test will not run.\n");
-            uiSwIntNum = (uint32_t)x;
-        }
-        else {
-            uiSwIntNum  = (uint32_t)(Xthal_intlevel[x] > Xthal_intlevel[y] ? y : x);
-            uiSwInt2Num = (uint32_t)(Xthal_intlevel[x] > Xthal_intlevel[y] ? x : y);
-        }
-#endif
-#if XCHAL_HAVE_XEA3
-        xthal_interrupt_pri_set(x, INT_LO_PRI);
-        xthal_interrupt_pri_set(y, INT_HI_PRI);
-        uiSwIntNum  = x;
-        uiSwInt2Num = y;
-#endif
-    }
-
+#if ( configNUMBER_OF_CORES > 1 )
+    // Start initTask on core 0
+    xTaskCreateAffinitySet(initTask,
+                           "initTask",
+                           configMINIMAL_STACK_SIZE,
+                           (void *)NULL,
+                           INIT_TASK_PRIO,
+                           1 << 0,
+                           NULL );
+#else
     xTaskCreate( initTask, "initTask", configMINIMAL_STACK_SIZE, (void *)NULL, INIT_TASK_PRIO, NULL );
-    /* Finally start the scheduler. */
+#endif // ( configNUMBER_OF_CORES > 1 )
+
     vTaskStartScheduler();
+
     /* Will only reach here if there is insufficient heap available to start
        the scheduler. */
     for( ;; );

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2024 Cadence Design Systems, Inc.
+// Copyright (c) 2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -30,6 +30,12 @@
 #include "semphr.h"
 
 #include "xtensa_timer.h"
+
+#include "testcommon.h"
+
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
 
 #define INIT_TASK_PRIO      (4 + portPRIVILEGE_BIT)
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x400) / sizeof(StackType_t))
@@ -64,7 +70,7 @@ static inline uint32_t get_ccompare(void)
 static inline void show_results_and_exit(int rc)
 {
     printf("%s (%d)\n", rc == 0 ? "Passed" : "Failed", rc);
-    exit(rc);
+    test_exit(rc);
 }
 
 #define TIMER_PERIOD 4
@@ -104,6 +110,9 @@ static void Init_Task(void *pdata)
 
     UNUSED(pdata);
 
+    // Set stderr to unbuffered
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     td->lock = xSemaphoreCreateCounting(1, 0);
     td->timer = xTimerCreate("", TIMER_PERIOD, 1, td, timer);
     xTimerStart(td->timer, portMAX_DELAY);
@@ -139,15 +148,25 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 
 int main(void)
 {
-    int err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+    int err;
+
+#if ( configNUMBER_OF_CORES > 1 )
+    // Pin Init_Task to the core processing timer ticks (usually core 0)
+    err = xTaskCreateAffinitySet(Init_Task,
+                                 "Init_Task",
+                                 TASK_STK_SIZE,
+                                 NULL,
+                                 INIT_TASK_PRIO,
+                                 1 << configTICK_CORE,
+                                 NULL);
+#else
+    err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+#endif
 
     if (err != pdPASS) {
         printf("FAILED! main\n");
         return 1;
     }
-
-    // Set stderr to unbuffered
-    setvbuf(stderr, NULL, _IONBF, 0);
 
     vTaskStartScheduler();
     printf( "vTaskStartScheduler FAILED!\n" );

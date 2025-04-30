@@ -51,5 +51,8 @@ static inline void outbyte(char c)
 }
 #endif
 
+// Testbench exit wrapper defined in assert.c
+extern void test_exit(int code);
+
 #endif /* TESTCOMMON_H */
 

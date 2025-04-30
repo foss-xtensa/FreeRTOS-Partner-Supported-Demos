@@ -1,6 +1,6 @@
 
 //-----------------------------------------------------------------------------
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -114,6 +114,9 @@ void Count_Task( void * pdata )
 
     while ( 1 )
     {
+#if ( configNUMBER_OF_CORES > 1 )
+        PUTCHAR( '0' + portGET_CORE_ID() );
+#endif
         xQueueSend( Queue, (void *) &count, 2 );
         ++count;
         vTaskDelay( 1 );
@@ -125,6 +128,7 @@ void Count_Task( void * pdata )
         }
 #endif
     }
+    PRINTF( "[Count_Task] Loop done.\n" );
 
     // Send a last message to terminate the Report Task.
     count = 0xFFFFFFFF;
@@ -148,7 +152,7 @@ void Count_Task( void * pdata )
 void Report_Task( void * pdata )
 {
     uint32_t count;
-    int32_t  err = 0;
+    int32_t  errcount = 0, err;
 
     UNUSED(pdata);
 
@@ -159,8 +163,15 @@ void Report_Task( void * pdata )
         err = xQueueReceive( Queue, &count, 2 );
         if ( err == pdFAIL )
         {
-            // Error
-            break;
+            // Ignore the first few errors in case the report task runs
+            // before the count task (or at the same time on SMP systems)
+            errcount++;
+            if (errcount >= 10) {
+                PRINTF( "\n[Report_Task] xQueueReceive() failed\n" );
+                break;
+            } else {
+                continue;
+            }
         }
 
         if ( count == 0xFFFFFFFF )
@@ -169,7 +180,11 @@ void Report_Task( void * pdata )
             break;
         }
 
+#if ( configNUMBER_OF_CORES > 1 )
+        PUTCHAR( 'a' + portGET_CORE_ID() );
+#else
         PUTCHAR( '.' );
+#endif
         if ( (count > 0) && (count % 10 == 0) )
         {
             PUTCHAR( ' ' );
@@ -273,7 +288,7 @@ done:
         PRINTF( "PASS\n" );
     }
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( exit_code );
+    test_exit( exit_code );
 #endif
 
     // Terminate this task. RTOS will continue to run other tasks.
@@ -294,7 +309,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
     UNUSED(pcTaskName);
 
     puts( "\nStack overflow, stopping." );
-    exit( 0 );
+    test_exit( 0 );
 }
 
 int main( int argc, char * argv[] )
