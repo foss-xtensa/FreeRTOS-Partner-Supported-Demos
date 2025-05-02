@@ -46,11 +46,7 @@
 #error  FreeRTOS SMP support required for mc_demo
 #endif
 
-// NOTE: XTOS single-image-multicore requires both dataram and sysram
-// to be configured.
-
-#if XCHAL_HAVE_PRID && XCHAL_HAVE_EXCLUSIVE && \
-    XCHAL_HAVE_DATARAM0 && (XSHAL_RAM_SIZE > 0) && \
+#if XCHAL_HAVE_PRID && XCHAL_HAVE_EXCLUSIVE && (XSHAL_RAM_SIZE > 0) && \
     XCHAL_DCACHE_IS_COHERENT && (XCHAL_L2CC_NUM_CORES > 1)
 
 // Set USE_MUTEX to zero to disable use of the FreeRTOS mutex.
