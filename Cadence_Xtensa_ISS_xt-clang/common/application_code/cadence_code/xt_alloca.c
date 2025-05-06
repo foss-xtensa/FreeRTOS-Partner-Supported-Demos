@@ -225,18 +225,6 @@ int main_xt_alloca(int argc, char *argv[])
     int err = 0;
     int exit_code = 0;
 
-#if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-#endif
-
     #ifdef XT_BOARD
     xtbsp_display_string("xt_alloca test");
     #endif

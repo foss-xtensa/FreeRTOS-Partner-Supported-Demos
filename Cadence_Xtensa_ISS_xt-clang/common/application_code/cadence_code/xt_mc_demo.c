@@ -45,6 +45,9 @@
 #ifndef SMP_TEST
 #error  FreeRTOS SMP support required for mc_demo
 #endif
+#if (configUSE_CORE_AFFINITY == 0)
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
 
 #if XCHAL_HAVE_PRID && XCHAL_HAVE_EXCLUSIVE && (XSHAL_RAM_SIZE > 0) && \
     XCHAL_DCACHE_IS_COHERENT && (XCHAL_L2CC_NUM_CORES > 1)
@@ -289,44 +292,37 @@ main()
     // in a different way.
     int i;
 
-    if (portGET_CORE_ID() == 0) {
 #if USE_MUTEX
-        // Init the mutex before calling PRINT()
-        mtx0 = xSemaphoreCreateMutex();
-        if (mtx0 == NULL) {
-            PRINT("Warning: mutex creation failed\n");
-        }
-#endif
-        PRINT("core 0 starting...\n");
-
-        // Init the barriers we will use. Note bar0
-        // does not need init.
-        xtos_barrier_init(&bar1, NUM_CORES);
-        xtos_barrier_init(&bar2, NUM_CORES);
-
-        for (i = 0; i < NUM_CORES; i++) {
-            TaskHandle_t handle;
-            int err = xTaskCreate(matrix_task,
-                                  "matrix task",
-                                  TASK_STK_SIZE,
-                                  NULL,
-                                  TASK_PRIO,
-                                  &handle);
-            if (err != pdPASS) {
-                PRINT("FAILED to create matrix task %d\n", i);
-                return -1;
-            }
-            vTaskCoreAffinitySet(handle, 1 << i);   // pin to core i
-        }
-
-        // Start scheduler
-        vTaskStartScheduler();
-    } else {
-        // Start scheduler
-        //PRINT("core %d starting...\n", portGET_CORE_ID());
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
+    // Init the mutex before calling PRINT()
+    mtx0 = xSemaphoreCreateMutex();
+    if (mtx0 == NULL) {
+        PRINT("Warning: mutex creation failed\n");
     }
+#endif
+    PRINT("core 0 starting...\n");
+
+    // Init the barriers we will use. Note bar0
+    // does not need init.
+    xtos_barrier_init(&bar1, NUM_CORES);
+    xtos_barrier_init(&bar2, NUM_CORES);
+
+    for (i = 0; i < NUM_CORES; i++) {
+        TaskHandle_t handle;
+        int err = xTaskCreate(matrix_task,
+                              "matrix task",
+                              TASK_STK_SIZE,
+                              NULL,
+                              TASK_PRIO,
+                              &handle);
+        if (err != pdPASS) {
+            PRINT("FAILED to create matrix task %d\n", i);
+            return -1;
+        }
+        vTaskCoreAffinitySet(handle, 1 << i);   // pin to core i
+    }
+
+    // Start scheduler
+    vTaskStartScheduler();
 
     // Execution will not return here
     return 0;

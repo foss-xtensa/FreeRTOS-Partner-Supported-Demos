@@ -82,6 +82,10 @@
 #define NTASKS      4
 
 #if (defined SMP_TEST)
+ #if (configUSE_CORE_AFFINITY == 0)
+ #error configUSE_CORE_AFFINITY required for this test in SMP mode
+ #endif
+ 
 /* For SMP configs, there are 2 options for co-processor management, which correspond
  * to the following values of SMP_TEST_COPROC_PIN_CORE:
  *   1. Keep each FP task on the same core to use "lazy" CP context switch
@@ -424,18 +428,6 @@ int main_xt_coproc(int argc, char *argv[])
 {
     int     err = 0;
     int     exit_code = 0;
-
-#if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-#endif
 
     if (argc > 1) {
         do_crash = 1;
