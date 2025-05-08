@@ -33,6 +33,10 @@
 
 #include "testcommon.h"
 
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
+
 #define INIT_TASK_PRIO      (4 + portPRIVILEGE_BIT)
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x400) / sizeof(StackType_t))
 
@@ -106,6 +110,9 @@ static void Init_Task(void *pdata)
 
     UNUSED(pdata);
 
+    // Set stderr to unbuffered
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     td->lock = xSemaphoreCreateCounting(1, 0);
     td->timer = xTimerCreate("", TIMER_PERIOD, 1, td, timer);
     xTimerStart(td->timer, portMAX_DELAY);
@@ -144,16 +151,6 @@ int main(void)
     int err;
 
 #if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-
     // Pin Init_Task to the core processing timer ticks (usually core 0)
     err = xTaskCreateAffinitySet(Init_Task,
                                  "Init_Task",
@@ -170,9 +167,6 @@ int main(void)
         printf("FAILED! main\n");
         return 1;
     }
-
-    // Set stderr to unbuffered
-    setvbuf(stderr, NULL, _IONBF, 0);
 
     vTaskStartScheduler();
     printf( "vTaskStartScheduler FAILED!\n" );

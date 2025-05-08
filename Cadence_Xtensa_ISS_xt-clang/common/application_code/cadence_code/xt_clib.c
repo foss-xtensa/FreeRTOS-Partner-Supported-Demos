@@ -222,18 +222,6 @@ int main( void )
     int err = 0;
     int exit_code = 0;
 
-#if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-#endif
-
     printf( TEST_PFX " running...\n" );
 
     // Create the control task initially with the high priority.

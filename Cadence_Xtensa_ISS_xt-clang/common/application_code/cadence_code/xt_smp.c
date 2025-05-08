@@ -49,6 +49,10 @@
 #include "queue.h"
 #include "semphr.h"
 
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
+
 
 /* Create task as privileged if MPU enabled. */
 #define TASK_INIT_PRIO          (20 | portPRIVILEGE_BIT)
@@ -357,16 +361,6 @@ int main_xt_smp(int argc, char *argv[])
     int err = 0;
     int exit_code = 0;
     TaskHandle_t handle;
-
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        xt_printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
 
     /* Display some core-specific output */
     int core = portGET_CORE_ID();

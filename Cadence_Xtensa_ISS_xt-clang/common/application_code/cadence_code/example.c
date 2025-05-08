@@ -152,7 +152,7 @@ void Count_Task( void * pdata )
 void Report_Task( void * pdata )
 {
     uint32_t count;
-    int32_t  err = 0;
+    int32_t  errcount = 0, err;
 
     UNUSED(pdata);
 
@@ -163,9 +163,15 @@ void Report_Task( void * pdata )
         err = xQueueReceive( Queue, &count, 2 );
         if ( err == pdFAIL )
         {
-            // Error
-            PRINTF( "\n[Report_Task] xQueueReceive() failed\n" );
-            break;
+            // Ignore the first few errors in case the report task runs
+            // before the count task (or at the same time on SMP systems)
+            errcount++;
+            if (errcount >= 10) {
+                PRINTF( "\n[Report_Task] xQueueReceive() failed\n" );
+                break;
+            } else {
+                continue;
+            }
         }
 
         if ( count == 0xFFFFFFFF )
@@ -312,18 +318,6 @@ int main( int argc, char * argv[] )
 
     UNUSED(argc);
     UNUSED(argv);
-
-#if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        PRINTF( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-#endif
 
 #ifdef XT_BOARD
     // Display waypoint for debugging.

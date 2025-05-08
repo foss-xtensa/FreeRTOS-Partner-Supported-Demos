@@ -38,6 +38,10 @@
 #define TEST_ITER  500
 #define PERF_TEST_PRIORITY      5  // Priorities will vary between 2 and 7
 
+#if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
+#error configUSE_CORE_AFFINITY required for this test in SMP mode
+#endif
+
 //-----------------------------------------------------------------------------
 // Thread function for yield test. Store current cycle count and yield the
 // CPU right away.
@@ -1082,18 +1086,6 @@ int main(void)
 int main_perf_test(int argc, char *argv[])
 #endif
 {
-#if ( configNUMBER_OF_CORES > 1 )
-    // Start scheduler on (cores > 0) before issuing libc calls, e.g. printf()
-    if (portGET_CORE_ID() > 0) {
-        portDISABLE_INTERRUPTS();
-        (void) xPortStartScheduler();
-
-        // If we got here then scheduler failed.
-        printf( "xPortStartScheduler FAILED!\n" );
-        test_exit(-1);
-    }
-#endif
-
     /* Print some stack related numbers. */
     printf("STK_INTEXC_EXTRA  = %d\nXT_STK_FRMSZ      = %d\nXT_CP_SIZE        = %d\n"
            "XT_XTRA_SIZE      = %d\nXT_USER_SIZE      = %d\nXT_STACK_MIN_SIZE = %d\n",
