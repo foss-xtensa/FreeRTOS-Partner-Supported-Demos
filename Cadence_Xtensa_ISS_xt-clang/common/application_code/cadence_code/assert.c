@@ -104,3 +104,20 @@ void test_exit(int code)
 
 #endif  // SMP_TEST
 
+#if (defined PROFILE_CONTEXT_SWITCH)
+
+// Higher accuracy profiling requires context switch trace hooks.
+// Provide default weak implementation which can be overridden.
+
+void __attribute__((weak))
+test_trace_task_switched_in(void)
+{
+}
+
+void __attribute__((weak))
+test_trace_task_switched_out(void)
+{
+}
+
+#endif  // PROFILE_CONTEXT_SWITCH
+
