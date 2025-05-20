@@ -76,9 +76,9 @@
 #define configRUN_MULTIPLE_PRIORITIES                   1
 #define configUSE_CORE_AFFINITY                         1
 #define configUSE_TASK_PREEMPTION_DISABLE               1
-#else
+#else   // SMP_TEST
 #define configNUMBER_OF_CORES                           1
-#endif
+#endif  // SMP_TEST
 
 /* This has impact on speed of search for highest priority */
 #ifdef SMALL_TEST
@@ -86,6 +86,17 @@
 #else
 #define configMAX_PRIORITIES							( 25 )
 #endif
+
+/* Optionally add hook functions to more accurately profile time per task */
+#ifdef PROFILE_CONTEXT_SWITCH
+#if !defined(_ASMLANGUAGE) && !defined(__ASSEMBLER__)
+extern void test_trace_task_switched_out(void);
+extern void test_trace_task_switched_in(void);
+#endif  // !__ASSEMBLER__
+#define traceTASK_SWITCHED_OUT                          test_trace_task_switched_out
+#define traceTASK_SWITCHED_IN                           test_trace_task_switched_in
+#endif  // PROFILE_CONTEXT_SWITCH
+
 /**
  * Minimal stack size. This may need to be increased for your application.
  *

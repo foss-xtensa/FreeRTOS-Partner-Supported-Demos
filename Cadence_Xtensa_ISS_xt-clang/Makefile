@@ -152,7 +152,7 @@ CFLAGS     ?= -O2
 endif
 CFLAGS     += -g -Wall -Werror
 ifeq ($(SMP),1)
-CFLAGS     += -DSMP_TEST
+CFLAGS     += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
 endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
@@ -254,25 +254,35 @@ $(OSLIB) ::
 $(OSLIB_VERIF) ::
 	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU)
 
-mpu_basic : $(BLDDIR)/mpu_basic.exe
+mpu_basic :
+	$(MAKE) $(BLDDIR)/mpu_basic.exe
 
-example   : $(BLDDIR)/example.exe
+example   :
+	$(MAKE) $(BLDDIR)/example.exe
 
-timer2   : $(BLDDIR)/timer_test2.exe
+timer2   :
+	$(MAKE) $(BLDDIR)/timer_test2.exe
 
-perf_test : $(BLDDIR)/perf_test.exe
+perf_test :
+	$(MAKE) $(BLDDIR)/perf_test.exe
 
-xt_coproc : $(BLDDIR)/xt_coproc.exe
+xt_coproc :
+	$(MAKE) $(BLDDIR)/xt_coproc.exe
 
-xt_alloca : $(BLDDIR)/xt_alloca.exe
+xt_alloca :
+	$(MAKE) $(BLDDIR)/xt_alloca.exe
 
-xt_clib   : $(BLDDIR)/xt_clib.exe
+xt_clib   :
+	$(MAKE) $(BLDDIR)/xt_clib.exe
 
-xt_intr   : $(BLDDIR)/xt_intr.exe
+xt_intr   :
+	$(MAKE) $(BLDDIR)/xt_intr.exe
 
-xt_smp    : $(BLDDIR)/xt_smp.exe
+xt_smp    :
+	$(MAKE) $(BLDDIR)/xt_smp.exe
 
-stress   : $(BLDDIR)/stress/stress.exe
+stress   :
+	$(MAKE) $(BLDDIR)/stress/stress.exe
 
 # xt_clib uses asm-offsets.h, which is build as a side effect of $(OSLIB)
 $(BLDDIR)/xt_clib.o : $(OSLIB)

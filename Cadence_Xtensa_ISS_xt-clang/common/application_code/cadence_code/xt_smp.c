@@ -136,6 +136,42 @@ static void Test_Task(void *pdata)
 }
 
 
+#if (defined PROFILE_CONTEXT_SWITCH)
+
+// Higher accuracy profiling requires context switch trace hooks
+uint32_t c0_cumulative_cycles = 0;
+uint32_t c0_curr_start_cycle  = 0;
+
+static void test_profile_init(void)
+{
+    c0_cumulative_cycles = 0;
+    c0_curr_start_cycle  = 0;
+}
+
+static uint32_t test_profile_data(void)
+{
+    return c0_cumulative_cycles;
+}
+
+void test_trace_task_switched_in(void)
+{
+    if (portGET_CORE_ID() == 0) {
+        c0_curr_start_cycle = xthal_get_ccount();
+    }
+}
+
+void test_trace_task_switched_out(void)
+{
+    if ((portGET_CORE_ID() == 0) && (c0_curr_start_cycle != 0)) {
+        uint32_t c0_curr_stop_cycle = xthal_get_ccount();
+        c0_cumulative_cycles += (c0_curr_stop_cycle - c0_curr_start_cycle);
+        c0_curr_start_cycle = 0;
+    }
+}
+
+#endif
+
+
 // SMP Task Test
 // -------------
 // Run several tasks that take a while to complete on core 0 and measure
@@ -161,6 +197,9 @@ static int run_task_test(void)
     /* Create test tasks running on the same core as a control test */
     task_ctrl_init();
     start_ticks = xTaskGetTickCount();
+#if (defined PROFILE_CONTEXT_SWITCH)
+    test_profile_init();
+#endif
     for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
         xt_printf("Creating task %d on core %d\n", i, 0);
         err = xTaskCreateAffinitySet(Test_Task,
@@ -179,12 +218,20 @@ static int run_task_test(void)
         }
     }
     task_ctrl_wait_yield();
+#if (defined PROFILE_CONTEXT_SWITCH)
+    total_ticks_1core = test_profile_data();    // cycles actually
+    xt_printf("\nsingle-core cycles: %d\n", total_ticks_1core);
+#else
     total_ticks_1core = xTaskGetTickCount() - start_ticks;
     xt_printf("\nsingle-core ticks: %d\n", total_ticks_1core);
+#endif
 
     /* Create test tasks running on multiple cores */
     task_ctrl_init();
     start_ticks = xTaskGetTickCount();
+#if (defined PROFILE_CONTEXT_SWITCH)
+    test_profile_init();
+#endif
     for (i = TEST_TASK_COUNT - 1; i >= 0; i--) {
         xt_printf("Creating task %d on core %d\n", i, i);
         err = xTaskCreateAffinitySet(Test_Task,
@@ -203,8 +250,13 @@ static int run_task_test(void)
         }
     }
     task_ctrl_wait_yield();
+#if (defined PROFILE_CONTEXT_SWITCH)
+    total_ticks_allcores = test_profile_data(); // cycles actually
+    xt_printf("\nmulti-core cycles: %d\n", total_ticks_allcores);
+#else
     total_ticks_allcores = xTaskGetTickCount() - start_ticks;
     xt_printf("\nmulti-core ticks: %d\n", total_ticks_allcores);
+#endif
 
     /* Somewhat arbitrary check to confirm multi-core time is faster than single-core */
     if ((total_ticks_allcores * 2 * 9 / 10) < total_ticks_1core) {
