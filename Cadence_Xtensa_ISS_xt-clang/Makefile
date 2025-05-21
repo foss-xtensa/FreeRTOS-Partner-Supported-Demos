@@ -97,6 +97,12 @@ TEST_FILES +=			\
 	xt_smp.c
 endif
 
+ifeq ($(SMP),1)
+NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+PERLCMD     = print join('_', 0..$(NUM_CORES)-1);
+CORE_NUMS   = $(subst _, ,$(shell perl -e '$(PERLCMD)'))
+endif
+
 EXE         = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.exe,$(TEST_FILES)))
 COMM_OBJS   = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES)))
 OBJS        = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(ALL_FILES)))
@@ -182,8 +188,29 @@ endif
 
 all : os $(EXE)
 check : $(addprefix check_,$(notdir $(EXE)))
+
+ifeq ($(SMP),0)
 check_% : $(BLDDIR)/%
 	$(ISS) --exit_with_target_code $<
+else
+check_% : $(BLDDIR)/% $(BLDDIR)/subsys
+	xtsc-run \
+--define=SYSTEMRAM_READ_DELAY=1 --define=SYSTEMRAM_WRITE_DELAY=1 \
+$(addsuffix _SIM_STOP_ON_EXIT=true, $(addprefix --define=DSP_,$(CORE_NUMS))) \
+$(addsuffix _BINARY=$<, $(addprefix --define=DSP_,$(CORE_NUMS))) \
+--include=$(BLDDIR)$(S)subsys$(S)xtsc-run$(S)SubSystem.inc \
+--cycle_limit=700000000
+
+# MP subsystem
+$(BLDDIR)/subsys:
+	$(MKPATH) $(BLDDIR)$(S)subsys
+	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)examples$(S)MP_Subsystem$(S)xt_sysbuilder_mp$(S)subsys.yml $(BLDDIR)$(S)subsys$(S)subsys.yml
+	$(shell xt-clang --show-config=xttools)$(S)libexec$(S)xt-sysbuilder \
+        -xtensa-system ${XTENSA_SYSTEM} \
+        -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
+        -swtools $(shell xt-clang --show-config=xttools) \
+        -build $(BLDDIR)$(S)subsys
+endif
 
 # NOTE: The small test needs its own version of the FreeRTOS library.
 # So don't club it with the other tests, it has to be built on its own.
