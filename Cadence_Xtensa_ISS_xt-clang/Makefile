@@ -189,10 +189,7 @@ endif
 all : os $(EXE)
 check : $(addprefix check_,$(notdir $(EXE)))
 
-ifeq ($(SMP),0)
-check_% : $(BLDDIR)/%
-	$(ISS) --exit_with_target_code $<
-else
+ifeq ($(SMP),1)
 check_% : $(BLDDIR)/% $(BLDDIR)/subsys
 	xtsc-run \
 --define=SYSTEMRAM_READ_DELAY=1 --define=SYSTEMRAM_WRITE_DELAY=1 \
@@ -210,6 +207,9 @@ $(BLDDIR)/subsys:
         -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
         -swtools $(shell xt-clang --show-config=xttools) \
         -build $(BLDDIR)$(S)subsys
+else
+check_% : $(BLDDIR)/%
+	$(ISS) --exit_with_target_code $<
 endif
 
 # NOTE: The small test needs its own version of the FreeRTOS library.
