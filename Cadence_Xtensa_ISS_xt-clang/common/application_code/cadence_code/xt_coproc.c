@@ -153,6 +153,7 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
             x = mx * x;
         }
 
+#if (XCHAL_CP_NUM > 0)
         /*
         Kill one task halfway through its computation. The coproc
         owner SA pointer will be pointing to this task's save area.
@@ -173,6 +174,7 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
             result[0] = expect[0]; /* hack to get the test to say pass */
             vTaskDelete(NULL);
         }
+#endif
 
 #if ((defined SMP_TEST) && !SMP_TEST_COPROC_PIN_CORE)
         if (task != NULL) {
