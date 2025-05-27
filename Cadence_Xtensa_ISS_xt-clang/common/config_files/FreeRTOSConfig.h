@@ -111,6 +111,8 @@ extern void test_trace_task_switched_in(void);
 
 #ifdef SMALL_TEST
 	#define configMINIMAL_STACK_SIZE					( XT_STACK_MIN_SIZE / sizeof( StackType_t ) )
+#elif (defined CONFIG_VERIF)
+	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 4096 ? XT_STACK_MIN_SIZE : 4096) / sizeof( StackType_t) )
 #else
 	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 1024 ? XT_STACK_MIN_SIZE : 1024) / sizeof( StackType_t) )
 #endif

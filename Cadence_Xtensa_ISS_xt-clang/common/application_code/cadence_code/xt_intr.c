@@ -91,7 +91,11 @@ volatile int junk;
 /* Stack size for tasks that do not use the C library. */
 #define     TASK_STK_SIZE_MIN       ((XT_STACK_MIN_SIZE) / sizeof(StackType_t))
 /* Stack size for tasks that use the C library and/or the coprocessors */
+#if (defined XT_CFLAGS_O0)
+#define     TASK_STK_SIZE_STD       ((XT_STACK_MIN_SIZE + 0x1000) / sizeof(StackType_t))
+#else
 #define     TASK_STK_SIZE_STD       ((XT_STACK_MIN_SIZE + 0x400) / sizeof(StackType_t))
+#endif
 
 /* Queue for passing count. */
 #define     QUEUE_SIZE              16
