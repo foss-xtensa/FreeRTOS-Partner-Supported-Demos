@@ -156,12 +156,12 @@ CFLAGS     ?= -Os
 else
 CFLAGS     ?= -O2
 endif
-CFLAGS     += -g -Wall -Werror
-ifeq ($(SMP),1)
-CFLAGS     += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
-endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
-XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
+CCFLAGS    += -g -Wall -Werror
+ifeq ($(SMP),1)
+CCFLAGS    += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
+endif
+XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 
 # VERIF options: 1-5 - run various subsets of all stress tests briefly and exit
 #                0   - run all stress tests indefinitely until cancelled by user
@@ -276,10 +276,10 @@ $(BLDDIR)/stress/Common/Minimal/%.o : $(COMMDIR)/Minimal/%.c $(BLDDIR)/.mkdir $(
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
 $(OSLIB) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
 
 $(OSLIB_VERIF) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
 
 mpu_basic :
 	$(MAKE) $(BLDDIR)/mpu_basic.exe

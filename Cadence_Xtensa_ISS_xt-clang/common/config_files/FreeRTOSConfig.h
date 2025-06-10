@@ -28,9 +28,6 @@
 #define FREERTOS_CONFIG_H
 
 
-/* Required for configuration-dependent settings. */
-#include "xtensa_config.h"
-
 /*
  *-----------------------------------------------------------------------------
  * Xtensa port specific definitions. These are required for proper operation
@@ -96,6 +93,12 @@ extern void test_trace_task_switched_in(void);
 #define traceTASK_SWITCHED_OUT                          test_trace_task_switched_out
 #define traceTASK_SWITCHED_IN                           test_trace_task_switched_in
 #endif  // PROFILE_CONTEXT_SWITCH
+
+
+/* Required for configuration-dependent settings. 
+ * Include this after configNUMBER_OF_CORES is defined.
+ */
+#include "xtensa_config.h"
 
 /**
  * Minimal stack size. This may need to be increased for your application.
