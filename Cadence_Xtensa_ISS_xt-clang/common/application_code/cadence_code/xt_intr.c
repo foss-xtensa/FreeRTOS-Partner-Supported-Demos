@@ -628,13 +628,13 @@ int main_xt_intr(int argc, char *argv[])
     // Start initTask on core 0
     xTaskCreateAffinitySet(initTask,
                            "initTask",
-                           configMINIMAL_STACK_SIZE,
+                           TASK_STK_SIZE_STD,
                            (void *)NULL,
                            INIT_TASK_PRIO,
                            1 << 0,
                            NULL );
 #else
-    xTaskCreate( initTask, "initTask", configMINIMAL_STACK_SIZE, (void *)NULL, INIT_TASK_PRIO, NULL );
+    xTaskCreate( initTask, "initTask", TASK_STK_SIZE_STD, (void *)NULL, INIT_TASK_PRIO, NULL );
 #endif // ( configNUMBER_OF_CORES > 1 )
 
     vTaskStartScheduler();

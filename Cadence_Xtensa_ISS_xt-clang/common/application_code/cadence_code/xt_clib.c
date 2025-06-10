@@ -44,6 +44,7 @@
 
 #if (XT_USE_THREAD_SAFE_CLIB > 0)
 #include <sys/reent.h>
+#include <errno.h>
 #else
 #warning XT_USE_THREAD_SAFE_CLIB not defined, this test will do nothing.
 #endif
@@ -69,6 +70,7 @@
 
 uint32_t     result[NTASKS];
 TaskHandle_t Task_TCB[NTASKS];
+int          round_robin_mode;
 
 #if ( configNUMBER_OF_CORES == 1 )
 extern volatile uint32_t * volatile pxCurrentTCB;
@@ -79,18 +81,32 @@ extern volatile uint32_t * volatile pxCurrentTCBs[];
 #endif
 
 
+// Do not optimize so that errno is recalculated from _reent_ptr each access
+int __attribute__ ((noinline)) errno_incr( int inc )
+{
+    int ret = errno + inc;
+    errno = ret;
+    return ret;
+}
+
+
 // Task function.
 void Task_Func( void * pdata )
 {
     uint32_t val = (uint32_t) pdata;
+    int      errno_val, errno_exp;
     uint32_t cnt = 0;
     void *   test_p;
+    uint32_t num_iterations = 400 * (round_robin_mode ? 1 : 10);
 
     srand( val );
 
 #if (XT_USE_THREAD_SAFE_CLIB > 0)
 
-    while ( cnt < 400 )
+    errno = val;
+    errno_exp = val + num_iterations * val;
+
+    while ( cnt < num_iterations )
     {
 #if XSHAL_CLIB == XTHAL_CLIB_XCLIB || XSHAL_CLIB == XTHAL_CLIB_NEWLIB
         if ( CURRTCB )
@@ -101,34 +117,58 @@ void Task_Func( void * pdata )
             {
                 // A failure might mean that the hack definition of TCB in this file, xt_clib.c,
                 // is out of date with respect to the official definition in tasks.c.
-                printf( "Task %d, Bad reent ptr\n", val );
+                printf( "ERROR: Task %d, Bad reent ptr\n", val );
                 test_exit( 1 );
             }
         }
         else
         {
-            printf( "Task %d, Bad TCB pointer!\n", val ); // This means there is some corruption
+            // This means there is some corruption
+            printf( "ERROR: Task %d, Bad TCB pointer!\n", val );
             test_exit( 2 );
         }
 #else
   #error Unsupported C library
 #endif
 
-        test_p = malloc( (size_t)(rand() % 500) );
-        if ( !test_p )
+        cnt++;
+        errno_val = errno_incr(val);
+        if (errno_val != (val + val * cnt))
         {
-            printf( "Task %d, malloc() failed\n", val );
+            printf( "ERROR: Task %d, errno_incr is %d, exp %d\n",
+                    val, errno_val, val + val * cnt );
             test_exit( 3 );
         }
 
-        if ( (val == 0) && (cnt % 100 == 99) )
+        test_p = malloc( (size_t)(rand() % 500) );
+        if ( !test_p )
+        {
+            printf( "ERROR: Task %d, malloc() failed\n", val );
+            test_exit( 4 );
+        }
+
+        if ( (val == 0) && (cnt % 100 == 0) )
         {
             printf( "100...\n" );
         }
 
-        vTaskDelay( 1 );
+        if (round_robin_mode)
+        {
+            vTaskDelay( 1 );
+        }
         free( test_p );
-        cnt++;
+    }
+
+    errno_val = errno;  // cache a copy for easier debug
+    if (errno_val == errno_exp)
+    {
+        printf( "Task %d, errno OK (%d)\n", val, errno_val );
+    }
+    else
+    {
+        printf( "Task %d, errno ERROR: was %d, expected %d\n",
+                val, errno_val, errno_exp );
+        test_exit( 5 );
     }
 
 #else
@@ -155,41 +195,65 @@ static void Init_Task( void * pdata )
     int32_t err = 0;
 
     UNUSED(pdata);
-    for ( i = 0; i < NTASKS; ++i )
-    {
-        // Create the application tasks (all are lower priority so wait for us).
-        err = xTaskCreate( Task_Func,
-                           "Task",
-                           TASK_STK_SIZE,
-                           (void *) i,
-                           TEST_TASK_PRIO,
-                           &Task_TCB[i] );
 
-        if ( err != pdPASS )
-        {
-            printf( TEST_PFX " FAILED to create Task\n" );
-            goto done;
+    for ( round_robin_mode = 0; round_robin_mode <= 1; round_robin_mode++ )
+    {
+#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 0))
+        if (round_robin_mode == 0) {
+            printf("INFO: skipping RR=0 test; configUSE_CORE_AFFINITY must be 1\n");
+            continue;
         }
-    }
-
-    // The test begins here.
-    t0 = xTaskGetTickCount();
-
-    // Simulate round-robin of the application tasks every tick.
-    do
-    {
-        busy = 0;
+#endif
         for ( i = 0; i < NTASKS; ++i )
         {
-            //vTaskPrioritySet(Task_TCB[i], 21);
-            vTaskDelay( NTASKS );
-            //vTaskPrioritySet(Task_TCB[i], 22);
-            busy |= ( result[i] == 0 );
-        }
-    }
-    while ( busy );
+            result[i] = 0;
 
-    t1 = xTaskGetTickCount();
+            // Create the application tasks (all are lower priority so wait for us).
+            err = xTaskCreate( Task_Func,
+                               "Task",
+                               TASK_STK_SIZE,
+                               (void *) i,
+                               TEST_TASK_PRIO,
+                               &Task_TCB[i] );
+
+            if ( err != pdPASS )
+            {
+                printf( TEST_PFX " FAILED to create Task\n" );
+                goto done;
+            }
+#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 1))
+            vTaskCoreAffinitySet(Task_TCB[i], 1 << (i % configNUMBER_OF_CORES));
+            printf("Task %d pinned to core %d, RR %d\n",
+                    i, (i % configNUMBER_OF_CORES), round_robin_mode);
+#elif (configNUMBER_OF_CORES > 1)
+            printf("Task %d unpinned, started from core %d, RR %d\n",
+                    i, portGET_CORE_ID(), round_robin_mode);
+#else
+            printf("Task %d running, RR %d\n", i, round_robin_mode);
+#endif
+        }
+
+        // The test begins here.
+        t0 = xTaskGetTickCount();
+
+        // Simulate round-robin of the application tasks every tick.
+        do
+        {
+            busy = 0;
+            for ( i = 0; i < NTASKS; ++i )
+            {
+                //vTaskPrioritySet(Task_TCB[i], 21);
+                vTaskDelay( NTASKS );
+                //vTaskPrioritySet(Task_TCB[i], 22);
+                busy |= ( result[i] == 0 );
+            }
+        }
+        while ( busy );
+
+        t1 = xTaskGetTickCount();
+        printf( "RR %d OK! %d ticks\n", round_robin_mode, t1 - t0 );
+    }
+
     printf( TEST_PFX " PASSED! %d ticks\n", t1 - t0 );
 
 done:

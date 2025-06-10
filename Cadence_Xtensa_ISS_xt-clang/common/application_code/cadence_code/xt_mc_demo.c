@@ -72,7 +72,12 @@
 
 // Task parameters
 #define TASK_PRIO           (20)
+#if (defined XT_CFLAGS_O0)
+#define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x1800) / sizeof(StackType_t))
+#else
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x800) / sizeof(StackType_t))
+#endif
+
 
 #define NUM_CORES           (configNUMBER_OF_CORES)
 
