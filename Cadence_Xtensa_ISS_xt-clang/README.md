@@ -114,6 +114,14 @@ SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
 common/config_files/FreeRTOSConfig.h
 
 
+Notes for version 3.12
+----------------------
+- Xtensa FreeRTOS SMP clib test improved to detect and report failures
+  for multicore reentrancy, which have also been fixed in the port.
+- Xtensa FreeRTOS SMP coprocessor handling fixes made; updated coproc
+  design description in xtensa_context.h.
+
+
 Notes for version 3.11
 ----------------------
 
