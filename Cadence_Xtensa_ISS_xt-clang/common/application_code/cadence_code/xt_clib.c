@@ -111,6 +111,13 @@ void Task_Func( void * pdata )
 #if XSHAL_CLIB == XTHAL_CLIB_XCLIB || XSHAL_CLIB == XTHAL_CLIB_NEWLIB
         if ( CURRTCB )
         {
+#if (defined __DYNAMIC_REENT__)
+            if ( __getreent() != (void *)(&CURRTCB[TCB_IMPURE_PTR_OFF / 4]) )
+            {
+                printf( "ERROR: Task %d, Bad __getreent() value\n", val );
+                test_exit( 1 );
+            }
+#else
             // Note that _impure_ptr (newlib) is redefined as _reent_ptr in the case of
             // xclib.
             if ( _impure_ptr != (void *)(&CURRTCB[TCB_IMPURE_PTR_OFF / 4]) )
@@ -120,6 +127,7 @@ void Task_Func( void * pdata )
                 printf( "ERROR: Task %d, Bad reent ptr\n", val );
                 test_exit( 1 );
             }
+#endif
         }
         else
         {
