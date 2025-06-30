@@ -38,6 +38,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
 #include "asm-offsets.h"
 #include "testcommon.h"
@@ -72,6 +73,8 @@ uint32_t     result[NTASKS];
 TaskHandle_t Task_TCB[NTASKS];
 int          round_robin_mode;
 
+SemaphoreHandle_t  xSemaphore;
+
 #if ( configNUMBER_OF_CORES == 1 )
 extern volatile uint32_t * volatile pxCurrentTCB;
 #define CURRTCB                 ( pxCurrentTCB )
@@ -97,7 +100,13 @@ void Task_Func( void * pdata )
     int      errno_val, errno_exp;
     uint32_t cnt = 0;
     void *   test_p;
+#if (defined XT_CFLAGS_O0)
+    uint32_t num_iterations = 400;  // O0 runs slower; keep test shorter
+#else
     uint32_t num_iterations = 400 * (round_robin_mode ? 1 : 10);
+#endif
+
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
     srand( val );
 
@@ -204,6 +213,8 @@ static void Init_Task( void * pdata )
 
     UNUSED(pdata);
 
+    xSemaphore = xSemaphoreCreateCounting( NTASKS, 0 );
+
     for ( round_robin_mode = 0; round_robin_mode <= 1; round_robin_mode++ )
     {
 #if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 0))
@@ -216,33 +227,49 @@ static void Init_Task( void * pdata )
         {
             result[i] = 0;
 
-            // Create the application tasks (all are lower priority so wait for us).
+            // Create the application tasks.  Use a semaphore to keep Task_Func
+            // instances from running before we're ready (only necessary on SMP
+            // since single-core case creates them with lower priorities).
+#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 1))
+            err = xTaskCreateAffinitySet( Task_Func,
+                                          "Task",
+                                          TASK_STK_SIZE,
+                                          (void *) i,
+                                          TEST_TASK_PRIO,
+                                          1 << (i % configNUMBER_OF_CORES),
+                                          &Task_TCB[i] );
+            printf("Task %d pinned to core %d, RR %d\n",
+                    i, (i % configNUMBER_OF_CORES), round_robin_mode);
+#else
             err = xTaskCreate( Task_Func,
                                "Task",
                                TASK_STK_SIZE,
                                (void *) i,
                                TEST_TASK_PRIO,
                                &Task_TCB[i] );
+#if (configNUMBER_OF_CORES > 1)
+            printf("Task %d unpinned, started from core %d, RR %d\n",
+                    i, portGET_CORE_ID(), round_robin_mode);
+#else
+            printf("Task %d running, RR %d\n", i, round_robin_mode);
+#endif
+#endif
 
             if ( err != pdPASS )
             {
                 printf( TEST_PFX " FAILED to create Task\n" );
                 goto done;
             }
-#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 1))
-            vTaskCoreAffinitySet(Task_TCB[i], 1 << (i % configNUMBER_OF_CORES));
-            printf("Task %d pinned to core %d, RR %d\n",
-                    i, (i % configNUMBER_OF_CORES), round_robin_mode);
-#elif (configNUMBER_OF_CORES > 1)
-            printf("Task %d unpinned, started from core %d, RR %d\n",
-                    i, portGET_CORE_ID(), round_robin_mode);
-#else
-            printf("Task %d running, RR %d\n", i, round_robin_mode);
-#endif
         }
 
         // The test begins here.
         t0 = xTaskGetTickCount();
+
+        // Unblock Task_Func instances
+        for ( i = 0; i < NTASKS; ++i )
+        {
+            xSemaphoreGive(xSemaphore);
+        }
 
         // Simulate round-robin of the application tasks every tick.
         do
