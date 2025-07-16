@@ -133,11 +133,27 @@ extern void test_trace_task_switched_in(void);
 /**
  * Minimal heap size to make sure examples can run on memory limited configs.
  * Adjust this to suit your system.
+ *
+ * XT_USE_L2RAM is defined in xtensa_config.h; when set, all "PRIVILEGED_DATA" 
+ * structures are moved to L2RAM.  It's worth noting that the default FreeRTOS
+ * heap (see MemMang/heap_4.c) is privileged and is moved as well.
  */
 #ifdef SMALL_TEST
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 16 * 1024 ) )
+#elif XT_USE_L2RAM
+	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 32 * 1024 ) )
 #else
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 512 * 1024 ) )
+#endif
+
+/**
+ * Xtensa heap for MPU-enabled configs has alignment requirements;
+ * Set configAPPLICATION_ALLOCATED_HEAP so ucHeap can be overridden.
+ * May need adjusting, especially with MemMang != heap_4.c or when
+ * an application-defined heap is required.
+ */
+#if (defined portUSING_MPU_WRAPPERS) && portUSING_MPU_WRAPPERS
+    #define configAPPLICATION_ALLOCATED_HEAP            1
 #endif
 
 #define configMAX_TASK_NAME_LEN							( 24 )
