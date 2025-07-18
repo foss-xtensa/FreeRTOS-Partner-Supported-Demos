@@ -29,9 +29,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include <xtensa/config/system.h>
-#include <xtensa/xtruntime.h>
-#include <xtensa/xtsubsystem.h>
 #include <xtensa/hal.h>
 
 #include "testcommon.h"
@@ -40,6 +37,7 @@
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
+#include "event_groups.h"
 
 
 #ifndef SMP_TEST
@@ -59,15 +57,28 @@
 #endif
 
 #if USE_MUTEX
-#define MLOCK()             xSemaphoreTake(mtx0, portMAX_DELAY)
-#define MUNLOCK()           xSemaphoreGive(mtx0)
-#else
-#define MLOCK()
-#define MUNLOCK()
+SemaphoreHandle_t mtx0;
 #endif
 
+static void mlock(void)
+{
+#if USE_MUTEX
+    // Block for a short time since lock shouldn't be held for long
+    while (!xSemaphoreTake(mtx0, 2))
+        ;
+#endif
+}
+
+static void munlock(void)
+{
+#if USE_MUTEX
+    xSemaphoreGive(mtx0);
+#endif
+}
+
+
 // Print macro for convenience.
-#define PRINT(...)    { MLOCK(); printf("core%d: ", portGET_CORE_ID()); printf(__VA_ARGS__); MUNLOCK(); }
+#define PRINT(...)    { mlock(); printf("core%d: ", portGET_CORE_ID()); printf(__VA_ARGS__); munlock(); }
 #define PRINT_UNLOCKED(...)    { printf("core%d: ", portGET_CORE_ID()); printf(__VA_ARGS__); }
 
 // Task parameters
@@ -81,14 +92,12 @@
 
 #define NUM_CORES           (configNUMBER_OF_CORES)
 
-// Global objects shared by all cores. Note bar0 is initialized
-// statically so we don't have to call init on it before use.
-xtos_barrier bar0 = NUM_CORES;
-xtos_barrier bar1;
-xtos_barrier bar2;
-#if USE_MUTEX
-SemaphoreHandle_t mtx0;
-#endif
+// Barriers implemented using FreeRTOS EventGroup objects
+EventGroupHandle_t barrier;
+
+#define BARRIER_WAIT_ALL    ((1 << NUM_CORES) - 1)
+#define BARRIER_SET_CURR    (1 << portGET_CORE_ID())
+
 
 // Try to keep the row size a multiple of the L1 cache line size.
 #ifndef ROW_SIZE
@@ -227,8 +236,8 @@ matrix_task(void *pdata)
     xthal_dcache_all_writeback_inv();
 
     // Wait for everyone to arrive at the barrier.
-    ret = xtos_barrier_wait(&bar0);
-    if (ret != 0) {
+    ret = xEventGroupSync( barrier, BARRIER_SET_CURR, BARRIER_WAIT_ALL, portMAX_DELAY );
+    if ((ret & BARRIER_WAIT_ALL) != BARRIER_WAIT_ALL) {
         fprintf(stderr, "Barrier wait error\n");
     }
 
@@ -242,16 +251,16 @@ matrix_task(void *pdata)
 
     // Sync here to make sure that all cores have finished their
     // work before checking results.
-    xtos_barrier_wait(&bar1);
+    xEventGroupSync( barrier, BARRIER_SET_CURR, BARRIER_WAIT_ALL, portMAX_DELAY );
 
     PRINT("Running check_matrix() on core %d\n", prid);
     ok = check_matrix(&out1, &out2, prid);
 
     if (prid == 0) {
-        MLOCK();
+        mlock();
         PRINT_UNLOCKED("single-core time : %u cycles\n", c4 - c3);
         PRINT_UNLOCKED("multi-core time  : %u cycles\n", c2 - c1);
-        MUNLOCK();
+        munlock();
     }
     else {
         PRINT("multi-core time  : %u cycles\n", c2 - c1);
@@ -260,11 +269,11 @@ matrix_task(void *pdata)
     // Sync again at the exit barrier. This prevents one core from
     // terminating the simulation and closing global file handles
     // before the others are done using them.
-    xtos_barrier_sync(&bar2);
+    xEventGroupSync( barrier, BARRIER_SET_CURR, BARRIER_WAIT_ALL, portMAX_DELAY );
     if (prid == 0) {
         PRINT(ok ? "PASS\n" : "FAIL\n");
     }
-    xtos_barrier_wait(&bar2);
+    xEventGroupSync( barrier, BARRIER_SET_CURR, BARRIER_WAIT_ALL, portMAX_DELAY );
 
     test_exit(0);
 }
@@ -306,10 +315,11 @@ main()
 #endif
     PRINT("core 0 starting...\n");
 
-    // Init the barriers we will use. Note bar0
-    // does not need init.
-    xtos_barrier_init(&bar1, NUM_CORES);
-    xtos_barrier_init(&bar2, NUM_CORES);
+    barrier = xEventGroupCreate();
+    if (!barrier) {
+        PRINT("ERROR: Event group / barrier creation FAILED\n");
+        return -1;
+    }
 
     for (i = 0; i < NUM_CORES; i++) {
         TaskHandle_t handle;
