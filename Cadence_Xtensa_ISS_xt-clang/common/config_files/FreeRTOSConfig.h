@@ -141,7 +141,13 @@ extern void test_trace_task_switched_in(void);
 #ifdef SMALL_TEST
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 16 * 1024 ) )
 #elif XT_USE_L2RAM
-	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 32 * 1024 ) )
+  /* Rough upper bound of how much L2RAM will be used by PRIVILEGED_DATA structures */
+  #define PRIV_DATA_SIZE       							( ( size_t ) ( 4 * 1024 ) )
+  #if ( XCHAL_L2_SIZE >= ( 1024 * 1024 ) )
+	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( ( 512 * 1024 ) - PRIV_DATA_SIZE ) )
+  #else
+	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( (XCHAL_L2_SIZE / 2) - PRIV_DATA_SIZE ) )
+  #endif // XCHAL_L2_SIZE
 #else
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 512 * 1024 ) )
 #endif
