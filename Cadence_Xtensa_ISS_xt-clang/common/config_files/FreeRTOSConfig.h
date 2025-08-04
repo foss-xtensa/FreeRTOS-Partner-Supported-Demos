@@ -103,6 +103,9 @@ extern void test_trace_task_switched_in(void);
 /**
  * Minimal stack size. This may need to be increased for your application.
  *
+ * @note: When compiling for SMP with -O0, the FreeRTOS idle task call-stack
+ * depth may exceed XT_STACK_MIN_SIZE.  Increase to 4KB to prevent overrun.
+ *
  * @note: The FreeRTOS demos may not work reliably with stack size < 4KB. The
  * Xtensa-specific examples should be fine with XT_STACK_MIN_SIZE.
  *
@@ -114,7 +117,7 @@ extern void test_trace_task_switched_in(void);
 
 #ifdef SMALL_TEST
 	#define configMINIMAL_STACK_SIZE					( XT_STACK_MIN_SIZE / sizeof( StackType_t ) )
-#elif (defined CONFIG_VERIF)
+#elif (defined CONFIG_VERIF) || ((configNUMBER_OF_CORES > 1) && defined(XT_CFLAGS_O0))
 	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 4096 ? XT_STACK_MIN_SIZE : 4096) / sizeof( StackType_t) )
 #else
 	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 1024 ? XT_STACK_MIN_SIZE : 1024) / sizeof( StackType_t) )
