@@ -204,6 +204,7 @@ extern void test_trace_task_switched_in(void);
 #define INCLUDE_uxTaskGetStackHighWaterMark				1
 #define INCLUDE_xTaskAbortDelay							1
 #define INCLUDE_xTaskGetHandle 							1
+#define INCLUDE_xTaskGetSchedulerState					1
 #define INCLUDE_xSemaphoreGetMutexHolder				1
 
 /**
