@@ -114,6 +114,12 @@ SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
 common/config_files/FreeRTOSConfig.h
 
 
+Notes for version 3.13
+----------------------
+- Xtensa-specific FreeRTOS SMP APIs added for scheduler opt-out/opt-in,
+  enabling per-core PSO support.
+
+
 Notes for version 3.12
 ----------------------
 - Xtensa FreeRTOS SMP clib test improved to detect and report failures
