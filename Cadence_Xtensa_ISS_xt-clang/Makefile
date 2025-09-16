@@ -16,6 +16,7 @@ AS          = xt-clang
 ISS         = xt-run
 XT_CORE     = $(patsubst %-params,%,$(notdir $(shell xt-clang --show-config=core)))
 CONFIGDIR   = $(shell xt-clang --show-config=config)
+XTTOOLSDIR  = $(shell xt-clang --show-config=xttools)
 
 # For platform-specific commands
 
@@ -92,9 +93,10 @@ ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
 ifeq ($(SMP),1)
-TEST_FILES +=			\
-	xt_mc_demo.c		\
-	xt_smp.c
+TEST_FILES +=            \
+    xt_mc_demo.c         \
+    xt_smp.c             \
+    xt_smp_pso_test.c
 endif
 
 ifeq ($(SMP),1)
@@ -202,10 +204,10 @@ $(addsuffix _BINARY=$<, $(addprefix --define=DSP_,$(CORE_NUMS))) \
 $(BLDDIR)/subsys:
 	$(MKPATH) $(BLDDIR)$(S)subsys
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)examples$(S)MP_Subsystem$(S)xt_sysbuilder_mp$(S)subsys.yml $(BLDDIR)$(S)subsys$(S)subsys.yml
-	$(shell xt-clang --show-config=xttools)$(S)libexec$(S)xt-sysbuilder \
+	$(XTTOOLSDIR) $(S)libexec$(S)xt-sysbuilder \
         -xtensa-system ${XTENSA_SYSTEM} \
         -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
-        -swtools $(shell xt-clang --show-config=xttools) \
+        -swtools $(XTTOOLSDIR)  \
         -build $(BLDDIR)$(S)subsys
 else
 check_% : $(BLDDIR)/%
@@ -263,6 +265,25 @@ $(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
+ifneq ($(POWERDOWN),1)
+# Configure test to run in opt-out/opt-in mode without power-down, which
+# requires recompiling xthal_smp_self_shutdown() to remove 'waiti' instruction
+$(BLDDIR)/smp_pso_self.o : $(XTTOOLSDIR)/xtensa-elf/src/hal/not_certified/smp_pso_self.S $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) -DXTHAL_SMP_SELF_SHUTDOWN_TEST_IMM_RETURN=1 -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.o : xt_smp_pso_test.c $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) $(CFLAGS_$*) -DTARGET_XTSC=1 $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.exe : $(BLDDIR)/smp_pso_self.o $(BLDDIR)/xt_smp_pso_test.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
+else
+# Configure test to run in powerdown / resume mode, which requires enabling
+# reset handler code to detect and handle warm boot
+LDFLAGS += -Wl,--defsym=_xthal_smp_pso_enable=1
+endif
+
+
+
 $(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm -lgdbio
 
@@ -307,6 +328,9 @@ xt_intr   :
 
 xt_smp    :
 	$(MAKE) $(BLDDIR)/xt_smp.exe
+
+xt_smp_pso_test    :
+	$(MAKE) $(BLDDIR)/xt_smp_pso_test.exe
 
 stress   :
 	$(MAKE) $(BLDDIR)/stress/stress.exe
