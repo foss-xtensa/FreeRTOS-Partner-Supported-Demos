@@ -204,12 +204,12 @@ static void Test_Task(void *pdata)
         }
     }
 
-    expected_data = (iteration / configNUMBER_OF_CORES);
+    expected_data = (iteration / configNUMBER_OF_CORES) + configNUMBER_OF_CORES / 2;
     my_iteration = core_status[my_core].core_iter;
     my_suspended = core_status[my_core].core_suspended;
-    if (my_suspended > 1) {
+    if (my_suspended >= 1) {
         /* Core was suspended and will have not run for a while */
-        status = (my_iteration < expected_data) ? 1 : -1;
+        status = (my_iteration <= expected_data) ? 1 : -1;
     } else {
         status = (my_iteration >= expected_data) ? 1 : -1;
     }
@@ -276,7 +276,8 @@ static void Core_Coherence_Test_Stop_Start(void *pdata)
      * disabling cache coherence, avoiding load between optout() and optin().
      */
     start_wait_cycle = xthal_get_ccount();
-    last_wait_cycle = start_wait_cycle + 3 * (configCPU_CLOCK_HZ / configTICK_RATE_HZ);
+    last_wait_cycle = start_wait_cycle + 
+        configNUMBER_OF_CORES * 2 * (configCPU_CLOCK_HZ / configTICK_RATE_HZ);
     __asm__ volatile ("memw; \n\t or %0, %0, %0" :: "r"(last_wait_cycle));
 #endif
 
