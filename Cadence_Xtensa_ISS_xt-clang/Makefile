@@ -154,12 +154,12 @@ endif
 INCS        = -I$(SRCDIR) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)
 DFLAGS     += -DSTANDALONE
 ifeq ($(OVERLAY),1)
-CFLAGS     ?= -Os
+CFLAGS     ?= -Os -g
 else
-CFLAGS     ?= -O2
+CFLAGS     ?= -O2 -g
 endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
-CCFLAGS    += -g -Wall -Werror
+CCFLAGS    += -Wall -Werror
 ifeq ($(SMP),1)
 CCFLAGS    += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
 endif
