@@ -159,7 +159,7 @@ endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 CCFLAGS    += -g -Wall -Werror
 ifeq ($(SMP),1)
-CCFLAGS    += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
+CCFLAGS    += -DSMP_TEST
 endif
 XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 
