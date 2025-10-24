@@ -161,7 +161,7 @@ endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 CCFLAGS    += -Wall -Werror
 ifeq ($(SMP),1)
-CCFLAGS    += -DSMP_TEST -DPROFILE_CONTEXT_SWITCH
+CCFLAGS    += -DSMP_TEST
 endif
 ifeq ($(filter -O0,$(CFLAGS)),-O0)
 OSCFLAGS    = -DXT_CFLAGS_O0
