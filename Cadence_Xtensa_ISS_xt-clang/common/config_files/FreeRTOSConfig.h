@@ -84,17 +84,6 @@
 #define configMAX_PRIORITIES							( 25 )
 #endif
 
-/* Optionally add hook functions to more accurately profile time per task */
-#ifdef PROFILE_CONTEXT_SWITCH
-#if !defined(_ASMLANGUAGE) && !defined(__ASSEMBLER__)
-extern void test_trace_task_switched_out(void);
-extern void test_trace_task_switched_in(void);
-#endif  // !__ASSEMBLER__
-#define traceTASK_SWITCHED_OUT                          test_trace_task_switched_out
-#define traceTASK_SWITCHED_IN                           test_trace_task_switched_in
-#endif  // PROFILE_CONTEXT_SWITCH
-
-
 /* Required for configuration-dependent settings. 
  * Include this after configNUMBER_OF_CORES is defined.
  */
