@@ -66,6 +66,7 @@ static QueueHandle_t      xQueue;
 typedef struct {
     int cnt;
     int sum;
+    int min;
     int max;
 } stats_t;
 
@@ -73,6 +74,7 @@ static void stats_reset(stats_t *s)
 {
     s->cnt = s->sum = 0;
     s->max = -0x7FFFFFFF; // Small number
+    s->min =  0x7FFFFFFF; // Large number
 }
 
 static void stats_update(stats_t *s, int value)
@@ -81,6 +83,8 @@ static void stats_update(stats_t *s, int value)
     s->sum += value;
     if (s->max < value)
         s->max = value;
+    if (s->min > value)
+        s->min = value;
 }
 
 static void yield_func(void * arg)
@@ -875,7 +879,8 @@ void yieldTest(void)
     }
 
     if (printStats)
-        printf("Solicited context switch time : avg %u max %u cycles [calibration %d]\n",
+        printf("Solicited context switch time : min %u avg %u max %u cycles [calibration %d]\n",
+                solicited.min,
                 (solicited.sum / solicited.cnt),
                 solicited.max,
                 oh_cycles);
@@ -969,7 +974,8 @@ void unsolicitedTest(void)
     calib = xthal_get_ccount() - calib;
 
     if (printStats)
-        printf("Unsolicited context switch time      : avg %u max %u cycles [calibration %d]\n",
+        printf("Unsolicited context switch time      : min %u avg %u max %u cycles [calibration %d]\n",
+                (unsigned)unsolicited_stats.min - calib,
                 (unsigned)(unsolicited_stats.sum + unsolicited_stats.cnt - 1) /
     				(unsigned)unsolicited_stats.cnt - calib,
                 (unsigned)unsolicited_stats.max - calib,
