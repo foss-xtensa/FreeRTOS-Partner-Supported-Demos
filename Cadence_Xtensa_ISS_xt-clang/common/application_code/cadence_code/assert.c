@@ -85,13 +85,16 @@ void test_exit(int code)
     exit(code);
 }   
 
-// Use idle hook to check if test_exit() was called only on another core
+// Use idle hook to check if test_exit() was called only on another core;
+// if test is still running, issue a wait-for-interrupt (WAITI) instruction
+// to conserve power
 #if (configUSE_PASSIVE_IDLE_HOOK != 0)
 void vApplicationPassiveIdleHook( void )
 {
     if (test_exit_called) {
         test_exit(test_exit_code);
     }
+    XT_WAITI( 0 );
 }
 #endif  // configUSE_PASSIVE_IDLE_HOOK
 
