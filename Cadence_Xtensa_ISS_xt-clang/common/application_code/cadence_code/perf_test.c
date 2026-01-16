@@ -240,7 +240,7 @@ void sem_test(void * arg)
 
     task_create(sem_get, "sem_get", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[0], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     {
         // Require semaphore task and sem_get to run on the same core for profiling
         int core = portGET_CORE_ID();
@@ -404,7 +404,7 @@ void mutex_test(void * arg)
 
     task_create(mutex_get2, "mutex_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     {
         // Require mutex task and mutex_get2 to run on the same core for profiling
         int core = portGET_CORE_ID();
@@ -513,7 +513,7 @@ void event_test(void * arg)
 
     printf("\nEvent timing test"
            "\n-----------------\n");
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     // Prevent event test from changing cores
     vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
 #endif
@@ -592,7 +592,7 @@ void event_test(void * arg)
     uiTaskResponse[1] = 0;
     task_create(event_get2, "event_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     // Require event task and event_get2 to run on the same core for profiling
     vTaskCoreAffinitySet(thandle, 1 << portGET_CORE_ID());
 #else
@@ -778,7 +778,7 @@ void msgq_test(void* arg)
     uiTaskResponse[1] = 0;
     task_create(msg_get2, "msg_get2", configMINIMAL_STACK_SIZE, (void *)&uiTaskResponse[1], portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thandle);
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     {
         // Require message task and msg_get2 to run on the same core for profiling
         int core = portGET_CORE_ID();
@@ -893,7 +893,7 @@ volatile unsigned unsolicited_done = 0;
 volatile unsigned unsolicited_cycles = 0;
 stats_t unsolicited_stats;
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
 // Wait to run unsolicited test until both tasks land on the same core
 #define UNSOLICITED_TEST_CORE   (configNUMBER_OF_CORES / 2)
 #endif
@@ -902,7 +902,7 @@ stats_t unsolicited_stats;
 void unsolicited_background(void *arg)
 {
     UNUSED(arg);
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     while (portGET_CORE_ID() != UNSOLICITED_TEST_CORE) {
         vTaskDelay(10);
     }
@@ -918,7 +918,7 @@ void unsolicited_hipriority(void *arg)
 {
     int i;
     UNUSED(arg);
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     while ((portGET_CORE_ID() != UNSOLICITED_TEST_CORE) ||
            (unsolicited_cycles == 0)) {
         vTaskDelay(10);
@@ -950,12 +950,12 @@ void unsolicitedTest(void)
     vTaskPrioritySet( NULL, PERF_TEST_PRIORITY + 2);
 
     task_create( unsolicited_background, "thd_bg", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 1), &thd_bg_h );
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     // Pin unsolicited tasks to the same core so the stats make sense
     vTaskCoreAffinitySet(thd_bg_h, 1 << UNSOLICITED_TEST_CORE);
 #endif
     task_create( unsolicited_hipriority, "thd_hi", configMINIMAL_STACK_SIZE, NULL, portPRIVILEGE_BIT | (PERF_TEST_PRIORITY + 2), &thd_hi_h );
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     // Pin unsolicited tasks to the same core so the stats make sense
     vTaskCoreAffinitySet(thd_hi_h, 1 << UNSOLICITED_TEST_CORE);
 #endif
@@ -1098,7 +1098,7 @@ int main_perf_test(int argc, char *argv[])
            STK_INTEXC_EXTRA, XT_STK_FRMSZ, XT_CP_SIZE, XT_XTRA_SIZE,
            XT_USER_SIZE, XT_STACK_MIN_SIZE);
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
     {
         TaskHandle_t thandle;
         task_create( test, "test", configMINIMAL_STACK_SIZE,

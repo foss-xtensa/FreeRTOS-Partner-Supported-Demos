@@ -35,6 +35,21 @@ OSINCDIR    = $(abspath $(OSROOT)$(S)..$(S)..$(S)..$(S)..$(S)..$(S)include)
 COMMDIR     = $(abspath $(DROOT)$(S)..$(S)..$(S)..$(S)Common)
 COMMINCDIR  = $(abspath $(COMMDIR)$(S)include)
 
+# Build/config options
+
+IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+ifeq ($(IS_LX),1)
+ifeq ($(NUM_CORES),1)
+SMP        ?= 0
+else
+SMP        ?= 1
+endif
+else
+# SMP only supported on LX
+SMP         = 0
+endif
+
 # Source files
 
 COMM_FILES  = \
@@ -100,7 +115,6 @@ TEST_FILES +=            \
 endif
 
 ifeq ($(SMP),1)
-NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 PERLCMD     = print join('_', 0..$(NUM_CORES)-1);
 CORE_NUMS   = $(subst _, ,$(shell perl -e '$(PERLCMD)'))
 endif
@@ -153,6 +167,7 @@ endif
 
 INCS        = -I$(SRCDIR) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)
 DFLAGS     += -DSTANDALONE
+
 ifeq ($(OVERLAY),1)
 CFLAGS     ?= -Os -g
 else
@@ -160,8 +175,11 @@ CFLAGS     ?= -O2 -g
 endif
 CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 CCFLAGS    += -Wall -Werror
-ifeq ($(SMP),1)
-CCFLAGS    += -DSMP_TEST
+ifeq ($(SMP),0)
+ifneq ($(NUM_CORES),1)
+# Disable SMP mode on a multicore config (usually for test/debug purposes)
+CCFLAGS    += -DconfigNUMBER_OF_CORES=1
+endif
 endif
 ifeq ($(filter -O0,$(CFLAGS)),-O0)
 OSCFLAGS    = -DXT_CFLAGS_O0
@@ -208,7 +226,7 @@ $(addsuffix _BINARY=$<, $(addprefix --define=DSP_,$(CORE_NUMS))) \
 $(BLDDIR)/subsys:
 	$(MKPATH) $(BLDDIR)$(S)subsys
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)examples$(S)MP_Subsystem$(S)xt_sysbuilder_mp$(S)subsys.yml $(BLDDIR)$(S)subsys$(S)subsys.yml
-	$(XTTOOLSDIR) $(S)libexec$(S)xt-sysbuilder \
+	$(XTTOOLSDIR)$(S)libexec$(S)xt-sysbuilder \
         -xtensa-system ${XTENSA_SYSTEM} \
         -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
         -swtools $(XTTOOLSDIR)  \

@@ -40,7 +40,7 @@
 #include "event_groups.h"
 
 
-#ifndef SMP_TEST
+#if !(defined configNUMBER_OF_CORES) || (configNUMBER_OF_CORES == 1)
 #error  FreeRTOS SMP support required for mc_demo
 #endif
 #if (configUSE_CORE_AFFINITY == 0)

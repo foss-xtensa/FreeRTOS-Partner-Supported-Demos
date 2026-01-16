@@ -112,7 +112,7 @@ N-core system (either via multiple command-line sessions or via Xplorer).
 This is required in part because the default SMP build uses libgdio to
 redirect console output to OCD.
 
-SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
+SMP-specific FreeRTOS config options can be found in:
 common/config_files/FreeRTOSConfig.h
 
 Notes regarding xt_smp_pso_test.exe: This example shows how to use the
@@ -134,6 +134,7 @@ Notes for version 3.13
 ----------------------
 - Xtensa-specific FreeRTOS SMP APIs added for scheduler opt-out/opt-in,
   enabling per-core PSO support.  Requires RJ.6 or newer toolchain.
+- Builds default to SMP=1 for LX configurations with multiple cores.
 
 
 Notes for version 3.12

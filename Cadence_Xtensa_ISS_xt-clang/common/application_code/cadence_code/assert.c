@@ -62,7 +62,7 @@ void vAssertCalled( const char * pcFile,
 }
 /*-----------------------------------------------------------*/
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
 
 // For SMP tests, include exit handling logic to gracefully stop XTSC
 // instead of allowing idle tasks and timer interrupts to run indefinitely
@@ -77,11 +77,9 @@ void test_exit(int code)
 {
     test_exit_code = code;
     test_exit_called = 1;
-#if (configNUMBER_OF_CORES > 1)
     if (portGET_CORE_ID() > 0) {
         _exit(code);
     }
-#endif
     exit(code);
 }   
 
@@ -98,7 +96,7 @@ void vApplicationPassiveIdleHook( void )
 }
 #endif  // configUSE_PASSIVE_IDLE_HOOK
 
-#else   // SMP_TEST
+#else   // (configNUMBER_OF_CORES == 1)
 
 void test_exit(int code)
 {
@@ -111,4 +109,4 @@ void vApplicationPassiveIdleHook( void )
 }
 #endif  // configUSE_PASSIVE_IDLE_HOOK
 
-#endif  // SMP_TEST
+#endif  // (configNUMBER_OF_CORES == 1)
