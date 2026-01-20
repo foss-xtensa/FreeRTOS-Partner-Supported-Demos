@@ -148,6 +148,7 @@ check_matrix(const matrix * m1, const matrix * m2, uint32_t prid)
 {
     uint32_t i, j;
     uint32_t err = 0;
+    UNUSED(prid);
 
     for (i = 0; i < m1->size; i++) {
         for (j = 0; j < m1->size; j++) {
@@ -210,6 +211,7 @@ matrix_task(void *pdata)
     uint32_t c1, c2;
     uint32_t c3, c4;
     uint32_t prid = portGET_CORE_ID();
+    UNUSED(pdata);
 
     if (prid == 0) {
         PRINT("core 0 starting...\n");
