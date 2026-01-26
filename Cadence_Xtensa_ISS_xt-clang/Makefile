@@ -173,7 +173,11 @@ CFLAGS     ?= -Os -g
 else
 CFLAGS     ?= -O2 -g
 endif
-CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
+
+# Avoid LTO due to build issues related to inline assembly
+CFLAGS_F    = $(filter-out -flto,$(CFLAGS))
+
+CCFLAGS     = $(CFLAGS_F) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
 CCFLAGS    += -Wall -Werror
 ifeq ($(SMP),0)
 ifneq ($(NUM_CORES),1)
@@ -181,7 +185,7 @@ ifneq ($(NUM_CORES),1)
 CCFLAGS    += -DconfigNUMBER_OF_CORES=1
 endif
 endif
-ifeq ($(filter -O0,$(CFLAGS)),-O0)
+ifeq ($(filter -O0,$(CFLAGS_F)),-O0)
 OSCFLAGS    = -DXT_CFLAGS_O0
 CCFLAGS    += -DXT_CFLAGS_O0
 endif
@@ -191,7 +195,7 @@ XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $
 #                0   - run all stress tests indefinitely until cancelled by user
 VERIF      ?= 0
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
-LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
+LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS_F)
 ifeq ($(SMP),1)
 LDFLAGS    += -Wl,--orphan-handling=place
 endif
@@ -201,7 +205,7 @@ CFLAGS_xt_coproc = -O3
 
 # use make DEBUG=1 to get MPU debug prints
 ifeq ($(DEBUG),1)
-CFLAGS     += -DDEBUG
+CFLAGS_F   += -DDEBUG
 endif
 
 # include dependency rules (generated using -MD)
@@ -319,10 +323,10 @@ $(BLDDIR)/stress/Common/Minimal/%.o : $(COMMDIR)/Minimal/%.c $(BLDDIR)/.mkdir $(
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
 $(OSLIB) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(OSCFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
 
 $(OSLIB_VERIF) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(OSCFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
 
 mpu_basic :
 	$(MAKE) $(BLDDIR)/mpu_basic.exe
@@ -361,7 +365,7 @@ stress   :
 $(BLDDIR)/xt_clib.o : $(OSLIB)
 
 small_test : $(BLDDIR)/.mkdir
-	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
+	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS_F) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
 
 
 #------------------------------------------------------------------------------
