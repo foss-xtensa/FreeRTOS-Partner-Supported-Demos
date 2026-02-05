@@ -70,15 +70,26 @@ void vAssertCalled( const char * pcFile,
 // Call exit() only on core 0 and _exit() on other cores.
 
 volatile int test_exit_called = 0;
+volatile int test_exited[configNUMBER_OF_CORES];
 volatile int test_exit_code;
 
 // When called directly, call exit() on core 0 and _exit() on other cores
 void test_exit(int code)
 {
+    int core = portGET_CORE_ID();
     test_exit_code = code;
     test_exit_called = 1;
-    if (portGET_CORE_ID() > 0) {
+    if (core > 0) {
+        test_exited[core] = 1;
         _exit(code);
+    }
+
+    // Wait until all nonzero cores have exited before core 0 calls exit;
+    // cores can get stuck in WAITI if IPIs stop too soon
+    for (int i = 1; i < configNUMBER_OF_CORES; i++) {
+        while (test_exited[i] == 0) {
+            ;
+        }
     }
     exit(code);
 }   
