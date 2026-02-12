@@ -356,9 +356,9 @@ static void Test_Runner(void *pdata)
 #if !TARGET_XTSC
     int          pso_status;
     int32_t      pwait_status;
+#endif
     uint32_t     start_wait_iter;
     int          my_core = portGET_CORE_ID();
-#endif
     uint32_t     pso_core = configNUMBER_OF_CORES - 1;
     volatile int pso_task_status;
     TaskHandle_t tasks[configNUMBER_OF_CORES];
@@ -495,13 +495,11 @@ static void Test_Runner(void *pdata)
         }
     }
 
-#if !TARGET_XTSC
     /* Wait for a while before ending the test */
     start_wait_iter = core_status[my_core].core_iter;
     while (core_status[my_core].core_iter - start_wait_iter < 10) {
         taskYIELD();
     }
-#endif
 
     running_cores = configNUMBER_OF_CORES + 1;
     status = task_ctrl_wait_yield();
