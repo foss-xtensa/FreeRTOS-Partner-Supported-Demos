@@ -114,10 +114,11 @@ void test_exit(int code)
     exit(code);
 }
 
-#if (configUSE_PASSIVE_IDLE_HOOK != 0)
-void vApplicationPassiveIdleHook( void )
+#if (configUSE_IDLE_HOOK != 0)
+void vApplicationIdleHook( void )
 {
+    XT_WAITI( 0 );
 }
-#endif  // configUSE_PASSIVE_IDLE_HOOK
+#endif  // configUSE_IDLE_HOOK
 
 #endif  // (configNUMBER_OF_CORES == 1)

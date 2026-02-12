@@ -50,21 +50,20 @@
  */
 
 #define configUSE_PREEMPTION							1
-#define configUSE_IDLE_HOOK								0
 
 #ifdef SMALL_TEST
-	#define configUSE_TICK_HOOK							0
+	#define configUSE_TICK_HOOK						0
 #else
-	#define configUSE_TICK_HOOK							1
+	#define configUSE_TICK_HOOK						1
 #endif
 
-#define configTICK_RATE_HZ								( 1000 )
+#define configTICK_RATE_HZ							( 1000 )
 
 /* Use port-defined tickless idle */
 #define configUSE_TICKLESS_IDLE							2
 
 /* Default clock rate for simulator */
-#define configCPU_CLOCK_HZ								50000000
+#define configCPU_CLOCK_HZ							50000000
 
 /* Multicore/SMP mode is enabled by default on multi-core LX configurations.
  * This can be overridden by defining configNUMBER_OF_CORES
@@ -72,13 +71,15 @@
  */
 #if (XCHAL_HAVE_XEA2 == 1) && (XCHAL_SUBSYS_NUM_CORES > 1) && \
     !((defined configNUMBER_OF_CORES) && (configNUMBER_OF_CORES == 1))
-#define configNUMBER_OF_CORES                           XCHAL_SUBSYS_NUM_CORES
-#define configUSE_PASSIVE_IDLE_HOOK                     1
-#define configRUN_MULTIPLE_PRIORITIES                   1
-#define configUSE_CORE_AFFINITY                         1
-#define configUSE_TASK_PREEMPTION_DISABLE               1
+#define configNUMBER_OF_CORES							XCHAL_SUBSYS_NUM_CORES
+#define configUSE_PASSIVE_IDLE_HOOK						1
+#define configUSE_IDLE_HOOK							0
+#define configRUN_MULTIPLE_PRIORITIES						1
+#define configUSE_CORE_AFFINITY							1
+#define configUSE_TASK_PREEMPTION_DISABLE					1
 #else
-#define configNUMBER_OF_CORES                           1
+#define configNUMBER_OF_CORES							1
+#define configUSE_IDLE_HOOK							1
 #endif
 
 /* This has impact on speed of search for highest priority */
