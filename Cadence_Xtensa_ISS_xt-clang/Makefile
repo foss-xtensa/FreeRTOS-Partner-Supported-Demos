@@ -39,6 +39,7 @@ COMMINCDIR  = $(abspath $(COMMDIR)$(S)include)
 
 IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+WINDOWED    = $(word 3, $(shell $(GREP) XCHAL_HAVE_WINDOWED $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 ifeq ($(IS_LX),1)
 ifeq ($(NUM_CORES),1)
 SMP        ?= 0
@@ -110,8 +111,13 @@ endif
 ifeq ($(SMP),1)
 TEST_FILES +=            \
     xt_mc_demo.c         \
-    xt_smp.c             \
+    xt_smp.c
+ifneq ($(POWERDOWN),1)
+ifeq ($(WINDOWED),1)
+TEST_FILES +=            \
     xt_smp_pso_test.c
+endif
+endif
 endif
 
 ifeq ($(SMP),1)
