@@ -112,11 +112,9 @@ ifeq ($(SMP),1)
 TEST_FILES +=            \
     xt_mc_demo.c         \
     xt_smp.c
-ifneq ($(POWERDOWN),1)
 ifeq ($(WINDOWED),1)
 TEST_FILES +=            \
     xt_smp_pso_test.c
-endif
 endif
 endif
 
