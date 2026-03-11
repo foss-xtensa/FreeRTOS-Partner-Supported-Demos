@@ -255,20 +255,23 @@ os : $(OSLIB)
 # MPU minimum alignment, we just use 4K here because that is the max possible.
 
 ifeq ($(HOSTTYPE),win)
-SECT_PRIV := PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
-SECT_ALIGN := ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096
+SECT_DATA_PRIV := PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
+SECT_TEXT_PRIV := PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)
+SECT_ALIGN := ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096
 endif
 
 ifeq ($(HOSTTYPE),unix)
-SECT_PRIV := "PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
-SECT_ALIGN := "ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096"
+SECT_DATA_PRIV := "PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
+SECT_TEXT_PRIV := "PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)"
+SECT_ALIGN := "ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096"
 endif
 
 # NOTE: Older xt-genldscripts does not support "ALIGN SECTIONS ..." so attempt to gracefully omit it
 # if it exits with an error
 $(LSPPATH)/.mkdir :
 	xt-regenlsps -f -mlsp=$(LSP) -b $(LSPPATH)
-	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	echo $(SECT_DATA_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	echo $(SECT_TEXT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
 	-xt-genldscripts -b $(LSPPATH) > $(LSPPATH)$(S)sect_align.log 2>&1 || $(CP) $(LSPPATH)$(S)memmap.xmm.noalign $(LSPPATH)$(S)memmap.xmm
@@ -384,7 +387,8 @@ $(OVLYLSP) :
 	xt-regenlsps -mlsp=sim -b $@
 	@echo OVERLAYS = 4 >> $@/memmap.xmm
 	@echo OVERLAY_ALIGN = 4096 >> $@/memmap.xmm
-	@echo $(SECT_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_DATA_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_TEXT_PRIV) >> $@$(S)memmap.xmm
 	$(CP) $@$(S)memmap.xmm $@$(S)memmap.xmm.noalign
 	@echo $(SECT_ALIGN) >> $@$(S)memmap.xmm
 	-xt-genldscripts -b $@ > $@$(S)sect_align.log 2>&1 || $(CP) $@$(S)memmap.xmm.noalign $@$(S)memmap.xmm
