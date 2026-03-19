@@ -101,10 +101,14 @@ static void prvCheckTask( void *pvParameters );
 void vStartTests( void )
 {
 	BaseType_t xResult;
+	BaseType_t stack_size = configMINIMAL_STACK_SIZE;
+#if (defined XT_CFLAGS_O0)
+    stack_size += 1024;
+#endif
 
 	xResult = xTaskCreate( prvCheckTask,
 						  "Check",
-						  configMINIMAL_STACK_SIZE,
+						  stack_size,
 						  NULL,
 						  testrunnerCHECK_TASK_PRIORITY,
 						  NULL );

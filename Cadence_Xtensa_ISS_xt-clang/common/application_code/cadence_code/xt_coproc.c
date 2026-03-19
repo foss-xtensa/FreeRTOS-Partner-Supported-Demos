@@ -81,7 +81,7 @@
 
 #define NTASKS      4
 
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
  #if (configUSE_CORE_AFFINITY == 0)
  #error configUSE_CORE_AFFINITY required for this test in SMP mode
  #endif
@@ -176,7 +176,7 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
         }
 #endif
 
-#if ((defined SMP_TEST) && !SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && !SMP_TEST_COPROC_PIN_CORE)
         if (task != NULL) {
             // Request this task change cores on context switch
             vTaskCoreAffinitySet(NULL, 1 << ((portGET_CORE_ID() + 1) % configNUMBER_OF_CORES) );
@@ -226,7 +226,7 @@ static float crunch(TaskHandle_t task, unsigned n, float x, float z)
 void Task0(void *pdata)
 {
     UNUSED(pdata);
-#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && SMP_TEST_COPROC_PIN_CORE)
     // This task uses a coprocessor; pin to core for context switch efficiency
     vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
 #endif
@@ -239,7 +239,7 @@ void Task0(void *pdata)
 void Task1(void *pdata)
 {
     UNUSED(pdata);
-#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && SMP_TEST_COPROC_PIN_CORE)
     // This task uses a coprocessor; pin to core for context switch efficiency
     vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
 #endif
@@ -252,7 +252,7 @@ void Task1(void *pdata)
 void Task2(void *pdata)
 {
     UNUSED(pdata);
-#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && SMP_TEST_COPROC_PIN_CORE)
     // This task uses a coprocessor; pin to core for context switch efficiency
     vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
 #endif
@@ -265,7 +265,7 @@ void Task2(void *pdata)
 void Task3(void *pdata)
 {
     UNUSED(pdata);
-#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && SMP_TEST_COPROC_PIN_CORE)
     // This task uses a coprocessor; pin to core for context switch efficiency
     vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
 #endif
@@ -446,11 +446,11 @@ int main_xt_coproc(int argc, char *argv[])
     #endif
     puts("Running...\n");
 
-#if ((defined SMP_TEST) && SMP_TEST_COPROC_PIN_CORE)
+#if ((configNUMBER_OF_CORES > 1) && SMP_TEST_COPROC_PIN_CORE)
 	printf("SMP test: prevent coproc tasks from migrating cores\n");
     err = xTaskCreateAffinitySet(Init_Task, "Init_Task", TASK_STK_SIZE_STD, NULL, TASK_INIT_PRIO, 1 << 0, NULL);
 #else
-#if (defined SMP_TEST)
+#if (configNUMBER_OF_CORES > 1)
 	printf("SMP test: force coproc tasks to migrate cores\n");
 #endif
     /* Create the control task initially with the high priority. */

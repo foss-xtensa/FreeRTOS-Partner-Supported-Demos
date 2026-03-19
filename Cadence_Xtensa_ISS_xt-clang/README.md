@@ -90,9 +90,11 @@ To build tests for an SMP FreeRTOS configuration, run "make all SMP=1".
 This will build the following SMP-specific tests, as well as all basic
 tests, linking them with the "sim" LSP:
 
-    xt_smp.exe -- Multitasking and migrating semaphore test
-
     xt_mc_demo.exe -- Multicore matrix multiplication performance test
+
+    xt_smp.exe -- Multitasking and task migration test
+
+    xt_smp_pso_test.exe -- Core shutdown/resume, coherence opt-out/in
 
 The FreeRTOS SMP configuration option is not compatible with the
 MPU and Overlay options that are described above.
@@ -110,8 +112,31 @@ N-core system (either via multiple command-line sessions or via Xplorer).
 This is required in part because the default SMP build uses libgdio to
 redirect console output to OCD.
 
-SMP-specific FreeRTOS config options can be found under "SMP_TEST" in:
+SMP-specific FreeRTOS config options can be found in:
 common/config_files/FreeRTOSConfig.h
+
+Notes regarding xt_smp_pso_test.exe: This example shows how to use the
+Xtensa power management (PSO) config option with FreeRTOS, which enables
+selectively powering down and resuming individual cores within a coherent
+SMP group.  Since there are currently no FreeRTOS APIs enabling this, two
+new Xtensa-specific functions are provided in xt_smp_api.h:
+xt_smp_scheduler_detach() and xt_smp_scheduler_reattach().
+
+Implementation details are provided via comments in xt_smp_pso_test.c.
+The test has two build targets:
+
+ 1. XTSC ("make SMP=1") where only coherence opt-out/opt-in is run, and
+ 2. Palladium ("make SMP=1 POWERDOWN=1") where power-down / reset testbench
+    logic enables execution of the full warm-boot resume sequence.
+
+
+Notes for version 3.13
+----------------------
+- Xtensa-specific FreeRTOS SMP APIs added for scheduler opt-out/opt-in,
+  enabling per-core PSO support.  PSO requires RJ.6 or newer toolchain.
+- Xtensa/SMP libc support updated to leverage __DYNAMIC_REENT__ when
+  enabled in the toolchain (by default for SMP LX configs in RJ.6).
+- Builds default to SMP=1 for LX configurations with multiple cores.
 
 
 Notes for version 3.12

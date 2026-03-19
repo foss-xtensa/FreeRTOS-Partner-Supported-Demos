@@ -16,6 +16,7 @@ AS          = xt-clang
 ISS         = xt-run
 XT_CORE     = $(patsubst %-params,%,$(notdir $(shell xt-clang --show-config=core)))
 CONFIGDIR   = $(shell xt-clang --show-config=config)
+XTTOOLSDIR  = $(shell xt-clang --show-config=xttools)
 
 # For platform-specific commands
 
@@ -33,6 +34,22 @@ BLDDIR      = $(BLDROOT)$(S)$(XT_CORE)
 OSINCDIR    = $(abspath $(OSROOT)$(S)..$(S)..$(S)..$(S)..$(S)..$(S)include)
 COMMDIR     = $(abspath $(DROOT)$(S)..$(S)..$(S)..$(S)Common)
 COMMINCDIR  = $(abspath $(COMMDIR)$(S)include)
+
+# Build/config options
+
+IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+WINDOWED    = $(word 3, $(shell $(GREP) XCHAL_HAVE_WINDOWED $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+ifeq ($(IS_LX),1)
+ifeq ($(NUM_CORES),1)
+SMP        ?= 0
+else
+SMP        ?= 1
+endif
+else
+# SMP only supported on LX
+SMP         = 0
+endif
 
 # Source files
 
@@ -92,13 +109,16 @@ ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
 ifeq ($(SMP),1)
-TEST_FILES +=			\
-	xt_mc_demo.c		\
-	xt_smp.c
+TEST_FILES +=            \
+    xt_mc_demo.c         \
+    xt_smp.c
+ifeq ($(WINDOWED),1)
+TEST_FILES +=            \
+    xt_smp_pso_test.c
+endif
 endif
 
 ifeq ($(SMP),1)
-NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 PERLCMD     = print join('_', 0..$(NUM_CORES)-1);
 CORE_NUMS   = $(subst _, ,$(shell perl -e '$(PERLCMD)'))
 endif
@@ -151,15 +171,27 @@ endif
 
 INCS        = -I$(SRCDIR) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)
 DFLAGS     += -DSTANDALONE
+
 ifeq ($(OVERLAY),1)
-CFLAGS     ?= -Os
+CFLAGS     ?= -Os -g
 else
-CFLAGS     ?= -O2
+CFLAGS     ?= -O2 -g
 endif
-CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
-CCFLAGS    += -g -Wall -Werror
-ifeq ($(SMP),1)
-CCFLAGS    += -DSMP_TEST
+
+# Avoid LTO due to build issues related to inline assembly
+CFLAGS_F    = $(filter-out -flto,$(CFLAGS))
+
+CCFLAGS     = $(CFLAGS_F) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
+CCFLAGS    += -Wall -Werror
+ifeq ($(SMP),0)
+ifneq ($(NUM_CORES),1)
+# Disable SMP mode on a multicore config (usually for test/debug purposes)
+CCFLAGS    += -DconfigNUMBER_OF_CORES=1
+endif
+endif
+ifeq ($(filter -O0,$(CFLAGS_F)),-O0)
+OSCFLAGS    = -DXT_CFLAGS_O0
+CCFLAGS    += -DXT_CFLAGS_O0
 endif
 XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 
@@ -167,7 +199,7 @@ XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $
 #                0   - run all stress tests indefinitely until cancelled by user
 VERIF      ?= 0
 VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
-LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
+LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS_F)
 ifeq ($(SMP),1)
 LDFLAGS    += -Wl,--orphan-handling=place
 endif
@@ -177,7 +209,7 @@ CFLAGS_xt_coproc = -O3
 
 # use make DEBUG=1 to get MPU debug prints
 ifeq ($(DEBUG),1)
-CFLAGS     += -DDEBUG
+CFLAGS_F   += -DDEBUG
 endif
 
 # include dependency rules (generated using -MD)
@@ -202,10 +234,10 @@ $(addsuffix _BINARY=$<, $(addprefix --define=DSP_,$(CORE_NUMS))) \
 $(BLDDIR)/subsys:
 	$(MKPATH) $(BLDDIR)$(S)subsys
 	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)examples$(S)MP_Subsystem$(S)xt_sysbuilder_mp$(S)subsys.yml $(BLDDIR)$(S)subsys$(S)subsys.yml
-	$(shell xt-clang --show-config=xttools)$(S)libexec$(S)xt-sysbuilder \
+	$(XTTOOLSDIR)$(S)libexec$(S)xt-sysbuilder \
         -xtensa-system ${XTENSA_SYSTEM} \
         -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
-        -swtools $(shell xt-clang --show-config=xttools) \
+        -swtools $(XTTOOLSDIR)  \
         -build $(BLDDIR)$(S)subsys
 else
 check_% : $(BLDDIR)/%
@@ -223,20 +255,23 @@ os : $(OSLIB)
 # MPU minimum alignment, we just use 4K here because that is the max possible.
 
 ifeq ($(HOSTTYPE),win)
-SECT_PRIV := PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
-SECT_ALIGN := ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096
+SECT_DATA_PRIV := PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
+SECT_TEXT_PRIV := PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)
+SECT_ALIGN := ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096
 endif
 
 ifeq ($(HOSTTYPE),unix)
-SECT_PRIV := "PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
-SECT_ALIGN := "ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096"
+SECT_DATA_PRIV := "PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
+SECT_TEXT_PRIV := "PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)"
+SECT_ALIGN := "ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096"
 endif
 
 # NOTE: Older xt-genldscripts does not support "ALIGN SECTIONS ..." so attempt to gracefully omit it
 # if it exits with an error
 $(LSPPATH)/.mkdir :
 	xt-regenlsps -f -mlsp=$(LSP) -b $(LSPPATH)
-	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	echo $(SECT_DATA_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	echo $(SECT_TEXT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
 	-xt-genldscripts -b $(LSPPATH) > $(LSPPATH)$(S)sect_align.log 2>&1 || $(CP) $(LSPPATH)$(S)memmap.xmm.noalign $(LSPPATH)$(S)memmap.xmm
@@ -263,6 +298,25 @@ $(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
+ifneq ($(POWERDOWN),1)
+# Configure test to run in opt-out/opt-in mode without power-down, which
+# requires recompiling xthal_smp_self_shutdown() to remove 'waiti' instruction
+$(BLDDIR)/smp_pso_self.o : $(XTTOOLSDIR)/xtensa-elf/src/hal/not_certified/smp_pso_self.S $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) -DXTHAL_SMP_SELF_SHUTDOWN_TEST_IMM_RETURN=1 -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.o : xt_smp_pso_test.c $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) $(CFLAGS_$*) -DTARGET_XTSC=1 $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.exe : $(BLDDIR)/smp_pso_self.o $(BLDDIR)/xt_smp_pso_test.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
+else
+# Configure test to run in powerdown / resume mode, which requires enabling
+# reset handler code to detect and handle warm boot
+LDFLAGS += -Wl,--defsym=_xthal_smp_pso_enable=1
+endif
+
+
+
 $(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm -lgdbio
 
@@ -276,10 +330,10 @@ $(BLDDIR)/stress/Common/Minimal/%.o : $(COMMDIR)/Minimal/%.c $(BLDDIR)/.mkdir $(
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
 $(OSLIB) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
 
 $(OSLIB_VERIF) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
 
 mpu_basic :
 	$(MAKE) $(BLDDIR)/mpu_basic.exe
@@ -308,6 +362,9 @@ xt_intr   :
 xt_smp    :
 	$(MAKE) $(BLDDIR)/xt_smp.exe
 
+xt_smp_pso_test    :
+	$(MAKE) $(BLDDIR)/xt_smp_pso_test.exe
+
 stress   :
 	$(MAKE) $(BLDDIR)/stress/stress.exe
 
@@ -315,7 +372,7 @@ stress   :
 $(BLDDIR)/xt_clib.o : $(OSLIB)
 
 small_test : $(BLDDIR)/.mkdir
-	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
+	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS_F) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
 
 
 #------------------------------------------------------------------------------
@@ -330,7 +387,8 @@ $(OVLYLSP) :
 	xt-regenlsps -mlsp=sim -b $@
 	@echo OVERLAYS = 4 >> $@/memmap.xmm
 	@echo OVERLAY_ALIGN = 4096 >> $@/memmap.xmm
-	@echo $(SECT_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_DATA_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_TEXT_PRIV) >> $@$(S)memmap.xmm
 	$(CP) $@$(S)memmap.xmm $@$(S)memmap.xmm.noalign
 	@echo $(SECT_ALIGN) >> $@$(S)memmap.xmm
 	-xt-genldscripts -b $@ > $@$(S)sect_align.log 2>&1 || $(CP) $@$(S)memmap.xmm.noalign $@$(S)memmap.xmm
