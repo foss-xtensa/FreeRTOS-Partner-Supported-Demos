@@ -133,7 +133,9 @@ The test has two build targets:
 Notes for version 3.13
 ----------------------
 - Xtensa-specific FreeRTOS SMP APIs added for scheduler opt-out/opt-in,
-  enabling per-core PSO support.  Requires RJ.6 or newer toolchain.
+  enabling per-core PSO support.  PSO requires RJ.6 or newer toolchain.
+- Xtensa/SMP libc support updated to leverage __DYNAMIC_REENT__ when
+  enabled in the toolchain (by default for SMP LX configs in RJ.6).
 - Builds default to SMP=1 for LX configurations with multiple cores.
 
 
