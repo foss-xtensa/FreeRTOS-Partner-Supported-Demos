@@ -149,7 +149,7 @@ static int run_task_test(void)
 {
     TaskHandle_t tasks[configNUMBER_OF_CORES];
     int err, i;
-    long start_ticks = 0, total_ticks_1core = 0, total_ticks_allcores = 0;
+    TickType_t start_ticks = 0, total_ticks_1core = 0, total_ticks_allcores = 0;
 
     xt_printf("SMP Task test started on core %d\n", portGET_CORE_ID());
 
@@ -310,6 +310,7 @@ static int run_sem_test(void)
 static void Core_Task(void *pdata)
 {
     int status;
+    UNUSED(pdata);
 
     status = run_task_test();
     status |= run_sem_test();
