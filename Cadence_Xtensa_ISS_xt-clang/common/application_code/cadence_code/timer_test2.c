@@ -74,6 +74,13 @@ static inline void show_results_and_exit(int rc)
 #define INIT_TASK_PRIO      (4 + portPRIVILEGE_BIT)
 #define TASK_STK_SIZE       ((XT_STACK_MIN_SIZE + 0x400) / sizeof(StackType_t))
 
+#if (defined XT_CFLAGS_O0)
+/* Task stack must be much larger to accomodate fprintf() when not optimized */
+#define TASK_STK_SIZE_LG    ((XT_STACK_MIN_SIZE + 0x1000) / sizeof(StackType_t))
+#else
+#define TASK_STK_SIZE_LG    TASK_STK_SIZE
+#endif
+
 #ifdef OTHER_TIMER_INDEX
 
 struct timer_data
@@ -226,13 +233,13 @@ int main(void)
     // Pin Init_Task to the core processing timer ticks (usually core 0)
     err = xTaskCreateAffinitySet(Init_Task,
                                  "Init_Task",
-                                 TASK_STK_SIZE,
+                                 TASK_STK_SIZE_LG,
                                  NULL,
                                  INIT_TASK_PRIO,
                                  1 << configTICK_CORE,
                                  NULL);
 #else
-    err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE, NULL, INIT_TASK_PRIO, NULL);
+    err = xTaskCreate(Init_Task, "Init_Task", TASK_STK_SIZE_LG, NULL, INIT_TASK_PRIO, NULL);
 #endif
 
     if (err != pdPASS) {

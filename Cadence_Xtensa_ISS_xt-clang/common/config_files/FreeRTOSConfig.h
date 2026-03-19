@@ -50,32 +50,37 @@
  */
 
 #define configUSE_PREEMPTION							1
-#define configUSE_IDLE_HOOK								0
 
 #ifdef SMALL_TEST
-	#define configUSE_TICK_HOOK							0
+	#define configUSE_TICK_HOOK						0
 #else
-	#define configUSE_TICK_HOOK							1
+	#define configUSE_TICK_HOOK						1
 #endif
 
-#define configTICK_RATE_HZ								( 1000 )
+#define configTICK_RATE_HZ							( 1000 )
 
 /* Use port-defined tickless idle */
 #define configUSE_TICKLESS_IDLE							2
 
 /* Default clock rate for simulator */
-#define configCPU_CLOCK_HZ								50000000
+#define configCPU_CLOCK_HZ							50000000
 
-#if (defined SMP_TEST)
-/* Multicore settings */
-#define configNUMBER_OF_CORES                           XCHAL_SUBSYS_NUM_CORES
-#define configUSE_PASSIVE_IDLE_HOOK                     1
-#define configRUN_MULTIPLE_PRIORITIES                   1
-#define configUSE_CORE_AFFINITY                         1
-#define configUSE_TASK_PREEMPTION_DISABLE               1
-#else   // SMP_TEST
-#define configNUMBER_OF_CORES                           1
-#endif  // SMP_TEST
+/* Multicore/SMP mode is enabled by default on multi-core LX configurations.
+ * This can be overridden by defining configNUMBER_OF_CORES
+ * to 1 outside of this file.
+ */
+#if (XCHAL_HAVE_XEA2 == 1) && (XCHAL_SUBSYS_NUM_CORES > 1) && \
+    !((defined configNUMBER_OF_CORES) && (configNUMBER_OF_CORES == 1))
+#define configNUMBER_OF_CORES							XCHAL_SUBSYS_NUM_CORES
+#define configUSE_PASSIVE_IDLE_HOOK						1
+#define configUSE_IDLE_HOOK							0
+#define configRUN_MULTIPLE_PRIORITIES						1
+#define configUSE_CORE_AFFINITY							1
+#define configUSE_TASK_PREEMPTION_DISABLE					1
+#else
+#define configNUMBER_OF_CORES							1
+#define configUSE_IDLE_HOOK							1
+#endif
 
 /* This has impact on speed of search for highest priority */
 #ifdef SMALL_TEST
@@ -92,6 +97,9 @@
 /**
  * Minimal stack size. This may need to be increased for your application.
  *
+ * @note: When compiling for SMP with -O0, the FreeRTOS idle task call-stack
+ * depth may exceed XT_STACK_MIN_SIZE.  Increase to 4KB to prevent overrun.
+ *
  * @note: The FreeRTOS demos may not work reliably with stack size < 4KB. The
  * Xtensa-specific examples should be fine with XT_STACK_MIN_SIZE.
  *
@@ -103,7 +111,7 @@
 
 #ifdef SMALL_TEST
 	#define configMINIMAL_STACK_SIZE					( XT_STACK_MIN_SIZE / sizeof( StackType_t ) )
-#elif (defined CONFIG_VERIF)
+#elif (defined CONFIG_VERIF) || ((configNUMBER_OF_CORES > 1) && defined(XT_CFLAGS_O0))
 	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 4096 ? XT_STACK_MIN_SIZE : 4096) / sizeof( StackType_t) )
 #else
 	#define configMINIMAL_STACK_SIZE					( (XT_STACK_MIN_SIZE > 1024 ? XT_STACK_MIN_SIZE : 1024) / sizeof( StackType_t) )
@@ -122,11 +130,33 @@
 /**
  * Minimal heap size to make sure examples can run on memory limited configs.
  * Adjust this to suit your system.
+ *
+ * XT_USE_L2RAM is defined in xtensa_config.h; when set, all "PRIVILEGED_DATA" 
+ * structures are moved to L2RAM.  It's worth noting that the default FreeRTOS
+ * heap (see MemMang/heap_4.c) is privileged and is moved as well.
  */
 #ifdef SMALL_TEST
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 16 * 1024 ) )
+#elif XT_USE_L2RAM
+  /* Rough upper bound of how much L2RAM will be used by PRIVILEGED_DATA structures */
+  #define PRIV_DATA_SIZE       							( ( size_t ) ( 4 * 1024 ) )
+  #if ( XCHAL_L2_SIZE >= ( 1024 * 1024 ) )
+	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( ( 512 * 1024 ) - PRIV_DATA_SIZE ) )
+  #else
+	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( (XCHAL_L2_SIZE / 2) - PRIV_DATA_SIZE ) )
+  #endif // XCHAL_L2_SIZE
 #else
 	#define configTOTAL_HEAP_SIZE						( ( size_t ) ( 512 * 1024 ) )
+#endif
+
+/**
+ * Xtensa heap for MPU-enabled configs has alignment requirements;
+ * Set configAPPLICATION_ALLOCATED_HEAP so ucHeap can be overridden.
+ * May need adjusting, especially with MemMang != heap_4.c or when
+ * an application-defined heap is required.
+ */
+#if (defined portUSING_MPU_WRAPPERS) && portUSING_MPU_WRAPPERS
+    #define configAPPLICATION_ALLOCATED_HEAP            1
 #endif
 
 #define configMAX_TASK_NAME_LEN							( 24 )
@@ -168,6 +198,7 @@
 #define INCLUDE_uxTaskGetStackHighWaterMark				1
 #define INCLUDE_xTaskAbortDelay							1
 #define INCLUDE_xTaskGetHandle 							1
+#define INCLUDE_xTaskGetSchedulerState					1
 #define INCLUDE_xSemaphoreGetMutexHolder				1
 
 /**
