@@ -50,6 +50,10 @@ else
 # SMP only supported on LX
 SMP         = 0
 endif
+ifeq ($(SMP),1)
+SMP_PSO     = $(word 3, $(shell $(GREP) XCHAL_HAVE_PSO_SMP $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+endif
+
 
 # Source files
 
@@ -112,9 +116,11 @@ ifeq ($(SMP),1)
 TEST_FILES +=            \
     xt_mc_demo.c         \
     xt_smp.c
+ifeq ($(SMP_PSO),1)
 ifeq ($(WINDOWED),1)
 TEST_FILES +=            \
     xt_smp_pso_test.c
+endif
 endif
 endif
 
