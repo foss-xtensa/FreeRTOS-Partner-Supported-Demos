@@ -41,14 +41,17 @@ IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)c
 NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 WINDOWED    = $(word 3, $(shell $(GREP) XCHAL_HAVE_WINDOWED $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 ifeq ($(IS_LX),1)
-ifeq ($(NUM_CORES),1)
+ifeq ($(NUM_CORES),1)	# Single-core LX
 SMP        ?= 0
 else
-SMP        ?= 1
+ifeq ($(NUM_CORES),)	# Pre-RJ5 LX
+SMP        ?= 0
+else
+SMP        ?= 1		# Multi-core LX
+endif
 endif
 else
-# SMP only supported on LX
-SMP         = 0
+SMP         = 0 	# SMP only supported on LX
 endif
 ifeq ($(SMP),1)
 SMP_PSO     = $(word 3, $(shell $(GREP) XCHAL_HAVE_PSO_SMP $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
