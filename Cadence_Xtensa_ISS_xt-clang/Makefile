@@ -40,6 +40,7 @@ COMMINCDIR  = $(abspath $(COMMDIR)$(S)include)
 IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 WINDOWED    = $(word 3, $(shell $(GREP) XCHAL_HAVE_WINDOWED $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+HAS_IDMA    = $(word 3, $(shell $(GREP) XCHAL_HAVE_IDMA $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
 ifeq ($(IS_LX),1)
 ifeq ($(NUM_CORES),1)	# Single-core LX
 SMP        ?= 0
@@ -125,6 +126,9 @@ TEST_FILES +=            \
     xt_smp_pso_test.c
 endif
 endif
+endif
+ifeq ($(HAS_IDMA),1)
+TEST_FILES += xt_idma_fixedbuf.c
 endif
 
 ifeq ($(SMP),1)
@@ -215,6 +219,8 @@ endif
 
 CFLAGS_mpu_basic = -O0
 CFLAGS_xt_coproc = -O3
+CFLAGS_xt_idma_fixedbuf = -I$(XTTOOLSDIR)/xtensa-elf/src/libidma/examples
+LFLAGS_xt_idma_fixedbuf = -lidma-os
 
 # use make DEBUG=1 to get MPU debug prints
 ifeq ($(DEBUG),1)
@@ -302,7 +308,7 @@ CUSTLSP = $(LSPPATH)/.mkdir
 endif
 
 $(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LFLAGS_$*) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
@@ -365,6 +371,9 @@ xt_alloca :
 xt_clib   :
 	$(MAKE) $(BLDDIR)/xt_clib.exe
 
+xt_idma_fixedbuf   :
+	$(MAKE) $(BLDDIR)/xt_idma_fixedbuf.exe
+
 xt_intr   :
 	$(MAKE) $(BLDDIR)/xt_intr.exe
 
@@ -426,7 +435,7 @@ clean :
 clean_all :
 	$(RM_R) $(BLDROOT)
 
-.PHONY : all clean clean_all mpu_basic example perf_test xt_coproc xt_alloca xt_clib xt_intr
+.PHONY : all clean clean_all mpu_basic example perf_test xt_coproc xt_alloca xt_clib xt_idma_fixedbuf xt_intr
 
 help :
 	@echo Available options:
