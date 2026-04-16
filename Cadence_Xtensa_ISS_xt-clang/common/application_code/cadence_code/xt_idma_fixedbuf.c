@@ -137,15 +137,18 @@ test1(void * arg)
         }
     }
 
+#if (XCHAL_SW_VERSION >= 1504000)
     // Before deleting the task, we must release its iDMA buffers so that
     // idma-os resource tracking is updated.  A subsequent instance of 
     // this task could be created with the same task handle but on a 
     // different core of an SMP system, triggering an assertion.
+    // NOTE: idma_release_loop_buffer() API introduced in RJ.4
     ret = idma_release_loop_buffer(CH, buffer1);
     if (ret != IDMA_OK) {
         printf("Error test1 releasing loop buffer %d\n", ret);
         halt();
     }
+#endif
 
     puts("test1 OK");
     xSemaphoreGive(tcb1_sem);
@@ -223,11 +226,18 @@ test2(void * arg)
         val += 5;
     }
 
+#if (XCHAL_SW_VERSION >= 1504000)
+    // Before deleting the task, we must release its iDMA buffers so that
+    // idma-os resource tracking is updated.  A subsequent instance of 
+    // this task could be created with the same task handle but on a 
+    // different core of an SMP system, triggering an assertion.
+    // NOTE: idma_release_loop_buffer() API introduced in RJ.4
     ret = idma_release_loop_buffer(CH, buffer2);
     if (ret != IDMA_OK) {
         printf("Error test2 releasing loop buffer %d\n", ret);
         halt();
     }
+#endif
 
     xSemaphoreGive(tcb2_sem);
     vTaskDelete(NULL);
@@ -304,11 +314,18 @@ test_2d(void * arg)
     }
 
     free(p);
+#if (XCHAL_SW_VERSION >= 1504000)
+    // Before deleting the task, we must release its iDMA buffers so that
+    // idma-os resource tracking is updated.  A subsequent instance of 
+    // this task could be created with the same task handle but on a 
+    // different core of an SMP system, triggering an assertion.
+    // NOTE: idma_release_loop_buffer() API introduced in RJ.4
     ret = idma_release_loop_buffer(CH, buf2d);
     if (ret != IDMA_OK) {
         printf("Error 2D test releasing loop buffer %d\n", ret);
         halt();
     }
+#endif
 
     xSemaphoreGive(tcb3_sem);
     vTaskDelete(NULL);
