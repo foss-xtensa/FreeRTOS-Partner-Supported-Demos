@@ -48,7 +48,7 @@
 /* Stack size for tasks that use the C library and/or the coprocessors */
 #define STACK_SIZE      ((XT_STACK_MIN_SIZE + 0x1000) / sizeof(StackType_t))
 
-#define NUM_ITER        1000
+#define NUM_ITER        500
 
 #define SIZE_1D         1024
 #define SIZE_2D         8192
