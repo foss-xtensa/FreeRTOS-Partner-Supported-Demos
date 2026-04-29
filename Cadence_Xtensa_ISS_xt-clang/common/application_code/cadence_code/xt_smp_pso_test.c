@@ -355,7 +355,7 @@ static void Test_Runner(void *pdata)
     int i, err, status;
 #if !TARGET_XTSC
     int          pso_status;
-    int32_t      pwait_status;
+    uint32_t     pwait_status;
 #endif
     uint32_t     start_wait_iter;
     int          my_core = portGET_CORE_ID();
@@ -439,9 +439,14 @@ static void Test_Runner(void *pdata)
 #else // TARGET_XTSC
         /* Only release pwrmgmt mutex once core is in PWAIT state */
         do {
-            pwait_status = (xthal_smp_core_shutdown_status(pso_core) & XTSUB_PSO_STAT_PWAIT);
-        } while ((pso_task_status == 0) && (pwait_status == 0));
-        if ((pso_task_status < 0) || (pwait_status < 0)) {
+            pwait_status = xthal_smp_core_shutdown_status(pso_core);
+            if ((pwait_status == XTHAL_INVALID) || (pwait_status == XTHAL_UNSUPPORTED)) {
+                XT_PRINTF(" FAILED: xthal_smp_core_shutdown_status() error %d\n", pwait_status);
+                test_exit(-3);
+                return;
+            }
+        } while ((pso_task_status == 0) && ((pwait_status & XTSUB_PSO_STAT_PWAIT) == 0));
+        if (pso_task_status < 0) {
             XT_PRINTF(" FAILED waiting for PSO status: pwait %d pso %d\n",
                     pwait_status, pso_task_status);
             test_exit(-3);
