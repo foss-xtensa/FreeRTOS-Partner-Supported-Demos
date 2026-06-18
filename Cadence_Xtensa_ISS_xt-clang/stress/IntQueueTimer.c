@@ -40,24 +40,29 @@
 #include <xtensa/hal.h>
 /*-----------------------------------------------------------*/
 
-/* Check if Timer1 is available. */
-#if XCHAL_TIMER1_INTERRUPT != XTHAL_TIMER_UNCONFIGURED
-	#if XCHAL_INT_LEVEL( XCHAL_TIMER1_INTERRUPT ) <= XCHAL_EXCM_LEVEL
-		#define SECOND_TIMER_AVAILABLE		1
-	#endif
-#endif
-
-#ifndef SECOND_TIMER_AVAILABLE
-	#define SECOND_TIMER_AVAILABLE			0
-#endif
+/* FreeRTOSConfig.h will only define configSTART_INTERRUPT_QUEUE_TESTS
+ * if multiple timers exist with different priorities <= EXCM_LEVEL.
+ * No assumptions can be made as to timer IDs.
+ */
+#define SECOND_TIMER_AVAILABLE  configSTART_INTERRUPT_QUEUE_TESTS
 
 /**
- * Timer0 is used to drive systick and therefore we use Timer1
+ * XT_TIMER_INDEX is used to drive systick. We use XT_TIMER_NEST
  * as second interrupt which runs on a higher priority than
- * Timer0. This ensures that systick will get interrupted by
+ * systick. This ensures that systick will get interrupted by
  * this timer and hence we can test interrupt nesting.
  */
-#define SECOND_TIMER_INDEX					1
+#define SECOND_TIMER_INDEX					XT_TIMER_NEST
+
+#if (SECOND_TIMER_INDEX == 0)
+#define SECOND_TIMER_INT  					XCHAL_TIMER0_INTERRUPT
+#elif (SECOND_TIMER_INDEX == 1)
+#define SECOND_TIMER_INT  					XCHAL_TIMER1_INTERRUPT
+#elif (SECOND_TIMER_INDEX == 2)
+#define SECOND_TIMER_INT  					XCHAL_TIMER2_INTERRUPT
+#elif (SECOND_TIMER_INDEX == 3)
+#define SECOND_TIMER_INT  					XCHAL_TIMER3_INTERRUPT
+#endif
 
 /**
  * Frequency of the second timer - This timer is configured at
@@ -84,8 +89,6 @@ extern BaseType_t xTimerForQueueTestInitialized;
 
 void vInitialiseTimerForIntQueueTest( void )
 {
-unsigned currentCycleCount, firstComparatorValue;
-
 	#if !defined(CONFIG_VERIF)
 	/* Inform the tick hook function that it can access queues now. */
 	xTimerForQueueTestInitialized = pdTRUE;
@@ -93,8 +96,10 @@ unsigned currentCycleCount, firstComparatorValue;
 
 	#if( SECOND_TIMER_AVAILABLE == 1 )
 	{
+	unsigned currentCycleCount, firstComparatorValue;
+
 		/* Install the interrupt handler for second timer. */
-		xt_set_interrupt_handler( XCHAL_TIMER1_INTERRUPT, prvTimer2Handler, NULL );
+		xt_set_interrupt_handler( SECOND_TIMER_INT, prvTimer2Handler, NULL );
 
 		/* Read the current cycle count. */
 		currentCycleCount = xthal_get_ccount();
@@ -106,7 +111,7 @@ unsigned currentCycleCount, firstComparatorValue;
 		xthal_set_ccompare( SECOND_TIMER_INDEX, firstComparatorValue );
 
 		/* Enable timer interrupt. */
-		xt_interrupt_enable( XCHAL_TIMER1_INTERRUPT );
+		xt_interrupt_enable( SECOND_TIMER_INT );
 	}
 	#endif /* SECOND_TIMER_AVAILABLE */
 }

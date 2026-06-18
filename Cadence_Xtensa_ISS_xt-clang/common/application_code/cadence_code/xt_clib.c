@@ -1,6 +1,6 @@
 
 //-----------------------------------------------------------------------------
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -38,12 +38,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
 #include "asm-offsets.h"
 #include "testcommon.h"
 
 #if (XT_USE_THREAD_SAFE_CLIB > 0)
 #include <sys/reent.h>
+#include <errno.h>
 #else
 #warning XT_USE_THREAD_SAFE_CLIB not defined, this test will do nothing.
 #endif
@@ -69,60 +71,121 @@
 
 uint32_t     result[NTASKS];
 TaskHandle_t Task_TCB[NTASKS];
+int          round_robin_mode;
 
+SemaphoreHandle_t  xSemaphore;
+
+#if ( configNUMBER_OF_CORES == 1 )
 extern volatile uint32_t * volatile pxCurrentTCB;
+#define CURRTCB                 ( pxCurrentTCB )
+#else
+extern volatile uint32_t * volatile pxCurrentTCBs[];
+#define CURRTCB                 ( pxCurrentTCBs[ portGET_CORE_ID() ] )
+#endif
+
+
+// Do not optimize so that errno is recalculated from _reent_ptr each access
+int __attribute__ ((noinline)) errno_incr( int inc )
+{
+    int ret = errno + inc;
+    errno = ret;
+    return ret;
+}
 
 
 // Task function.
 void Task_Func( void * pdata )
 {
     uint32_t val = (uint32_t) pdata;
+    int      errno_val, errno_exp;
     uint32_t cnt = 0;
     void *   test_p;
+#if (defined XT_CFLAGS_O0)
+    uint32_t num_iterations = 400;  // O0 runs slower; keep test shorter
+#else
+    uint32_t num_iterations = 400 * (round_robin_mode ? 1 : 10);
+#endif
+
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
     srand( val );
 
 #if (XT_USE_THREAD_SAFE_CLIB > 0)
 
-    while ( cnt < 400 )
+    errno = val;
+    errno_exp = val + num_iterations * val;
+
+    while ( cnt < num_iterations )
     {
 #if XSHAL_CLIB == XTHAL_CLIB_XCLIB || XSHAL_CLIB == XTHAL_CLIB_NEWLIB
-        if ( pxCurrentTCB )
+        if ( CURRTCB )
         {
+#if (defined __DYNAMIC_REENT__)
+            if ( __getreent() != (void *)(&CURRTCB[TCB_IMPURE_PTR_OFF / 4]) )
+            {
+                printf( "ERROR: Task %d, Bad __getreent() value\n", val );
+                test_exit( 1 );
+            }
+#else
             // Note that _impure_ptr (newlib) is redefined as _reent_ptr in the case of
             // xclib.
-            if ( _impure_ptr != (void *)(&pxCurrentTCB[TCB_IMPURE_PTR_OFF / 4]) )
+            if ( _impure_ptr != (void *)(&CURRTCB[TCB_IMPURE_PTR_OFF / 4]) )
             {
                 // A failure might mean that the hack definition of TCB in this file, xt_clib.c,
                 // is out of date with respect to the official definition in tasks.c.
-                printf( "Task %d, Bad reent ptr\n", val );
-                exit( 1 );
+                printf( "ERROR: Task %d, Bad reent ptr\n", val );
+                test_exit( 1 );
             }
+#endif
         }
         else
         {
-            printf( "Task %d, Bad TCB pointer!\n", val ); // This means there is some corruption
-            exit( 2 );
+            // This means there is some corruption
+            printf( "ERROR: Task %d, Bad TCB pointer!\n", val );
+            test_exit( 2 );
         }
 #else
   #error Unsupported C library
 #endif
 
+        cnt++;
+        errno_val = errno_incr(val);
+        if (errno_val != (val + val * cnt))
+        {
+            printf( "ERROR: Task %d, errno_incr is %d, exp %d\n",
+                    val, errno_val, val + val * cnt );
+            test_exit( 3 );
+        }
+
         test_p = malloc( (size_t)(rand() % 500) );
         if ( !test_p )
         {
-            printf( "Task %d, malloc() failed\n", val );
-            exit( 3 );
+            printf( "ERROR: Task %d, malloc() failed\n", val );
+            test_exit( 4 );
         }
 
-        if ( (val == 0) && (cnt % 100 == 99) )
+        if ( (val == 0) && (cnt % 100 == 0) )
         {
             printf( "100...\n" );
         }
 
-        vTaskDelay( 1 );
+        if (round_robin_mode)
+        {
+            vTaskDelay( 1 );
+        }
         free( test_p );
-        cnt++;
+    }
+
+    errno_val = errno;  // cache a copy for easier debug
+    if (errno_val == errno_exp)
+    {
+        printf( "Task %d, errno OK (%d)\n", val, errno_val );
+    }
+    else
+    {
+        printf( "Task %d, errno ERROR: was %d, expected %d\n",
+                val, errno_val, errno_exp );
+        test_exit( 5 );
     }
 
 #else
@@ -149,47 +212,89 @@ static void Init_Task( void * pdata )
     int32_t err = 0;
 
     UNUSED(pdata);
-    for ( i = 0; i < NTASKS; ++i )
-    {
-        // Create the application tasks (all are lower priority so wait for us).
-        err = xTaskCreate( Task_Func,
-                           "Task",
-                           TASK_STK_SIZE,
-                           (void *) i,
-                           TEST_TASK_PRIO,
-                           &Task_TCB[i] );
 
-        if ( err != pdPASS )
-        {
-            printf( TEST_PFX " FAILED to create Task\n" );
-            goto done;
+    xSemaphore = xSemaphoreCreateCounting( NTASKS, 0 );
+
+    for ( round_robin_mode = 0; round_robin_mode <= 1; round_robin_mode++ )
+    {
+#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 0))
+        if (round_robin_mode == 0) {
+            printf("INFO: skipping RR=0 test; configUSE_CORE_AFFINITY must be 1\n");
+            continue;
         }
-    }
-
-    // The test begins here.
-    t0 = xTaskGetTickCount();
-
-    // Simulate round-robin of the application tasks every tick.
-    do
-    {
-        busy = 0;
+#endif
         for ( i = 0; i < NTASKS; ++i )
         {
-            //vTaskPrioritySet(Task_TCB[i], 21);
-            vTaskDelay( NTASKS );
-            //vTaskPrioritySet(Task_TCB[i], 22);
-            busy |= ( result[i] == 0 );
-        }
-    }
-    while ( busy );
+            result[i] = 0;
 
-    t1 = xTaskGetTickCount();
+            // Create the application tasks.  Use a semaphore to keep Task_Func
+            // instances from running before we're ready (only necessary on SMP
+            // since single-core case creates them with lower priorities).
+#if ((configNUMBER_OF_CORES > 1) && (configUSE_CORE_AFFINITY == 1))
+            err = xTaskCreateAffinitySet( Task_Func,
+                                          "Task",
+                                          TASK_STK_SIZE,
+                                          (void *) i,
+                                          TEST_TASK_PRIO,
+                                          1 << (i % configNUMBER_OF_CORES),
+                                          &Task_TCB[i] );
+            printf("Task %d pinned to core %d, RR %d\n",
+                    i, (i % configNUMBER_OF_CORES), round_robin_mode);
+#else
+            err = xTaskCreate( Task_Func,
+                               "Task",
+                               TASK_STK_SIZE,
+                               (void *) i,
+                               TEST_TASK_PRIO,
+                               &Task_TCB[i] );
+#if (configNUMBER_OF_CORES > 1)
+            printf("Task %d unpinned, started from core %d, RR %d\n",
+                    i, portGET_CORE_ID(), round_robin_mode);
+#else
+            printf("Task %d running, RR %d\n", i, round_robin_mode);
+#endif
+#endif
+
+            if ( err != pdPASS )
+            {
+                printf( TEST_PFX " FAILED to create Task\n" );
+                goto done;
+            }
+        }
+
+        // The test begins here.
+        t0 = xTaskGetTickCount();
+
+        // Unblock Task_Func instances
+        for ( i = 0; i < NTASKS; ++i )
+        {
+            xSemaphoreGive(xSemaphore);
+        }
+
+        // Simulate round-robin of the application tasks every tick.
+        do
+        {
+            busy = 0;
+            for ( i = 0; i < NTASKS; ++i )
+            {
+                //vTaskPrioritySet(Task_TCB[i], 21);
+                vTaskDelay( NTASKS );
+                //vTaskPrioritySet(Task_TCB[i], 22);
+                busy |= ( result[i] == 0 );
+            }
+        }
+        while ( busy );
+
+        t1 = xTaskGetTickCount();
+        printf( "RR %d OK! %d ticks\n", round_robin_mode, t1 - t0 );
+    }
+
     printf( TEST_PFX " PASSED! %d ticks\n", t1 - t0 );
 
 done:
 #ifdef XT_SIMULATOR
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( 0 );
+    test_exit( 0 );
 #endif
 
     // Terminate this task. RTOS will continue to run timer, stats and idle tasks.
@@ -202,7 +307,7 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
     UNUSED(xTask);
     UNUSED(pcTaskName);
     puts( "\nStack overflow, stopping." );
-    exit( -1 );
+    test_exit( -1 );
 }
 
 
@@ -240,7 +345,7 @@ done:
 
 #ifdef XT_SIMULATOR
     // Shut down simulator and report error code as exit code to host (0 = OK).
-    exit( exit_code );
+    test_exit( exit_code );
 #endif
 
     return 0;

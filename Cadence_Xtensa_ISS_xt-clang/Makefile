@@ -16,6 +16,7 @@ AS          = xt-clang
 ISS         = xt-run
 XT_CORE     = $(patsubst %-params,%,$(notdir $(shell xt-clang --show-config=core)))
 CONFIGDIR   = $(shell xt-clang --show-config=config)
+XTTOOLSDIR  = $(shell xt-clang --show-config=xttools)
 
 # For platform-specific commands
 
@@ -33,6 +34,34 @@ BLDDIR      = $(BLDROOT)$(S)$(XT_CORE)
 OSINCDIR    = $(abspath $(OSROOT)$(S)..$(S)..$(S)..$(S)..$(S)..$(S)include)
 COMMDIR     = $(abspath $(DROOT)$(S)..$(S)..$(S)..$(S)Common)
 COMMINCDIR  = $(abspath $(COMMDIR)$(S)include)
+
+# Build/config options
+
+IS_LX       = $(word 3, $(shell $(GREP) XCHAL_HAVE_XEA2 $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+NUM_CORES   = $(word 3, $(shell $(GREP) XCHAL_SUBSYS_NUM_CORES $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+WINDOWED    = $(word 3, $(shell $(GREP) XCHAL_HAVE_WINDOWED $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+HAS_IDMA    = $(word 3, $(shell $(GREP) XCHAL_HAVE_IDMA $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+ifeq ($(IS_LX),1)
+ifeq ($(NUM_CORES),1)
+# Single-core LX
+SMP        ?= 0
+else
+ifeq ($(NUM_CORES),)
+# Pre-RJ5 LX
+SMP        ?= 0
+else
+# Multi-core LX
+SMP        ?= 1
+endif
+endif
+else
+# SMP only supported on LX
+SMP         = 0
+endif
+ifeq ($(SMP),1)
+SMP_PSO     = $(word 3, $(shell $(GREP) XCHAL_HAVE_PSO_SMP $(CONFIGDIR)$(S)src$(S)config$(S)core.h))
+endif
+
 
 # Source files
 
@@ -91,6 +120,25 @@ STRESS_COMM_C	= \
 ifeq ($(MPU),1)
 TEST_FILES += mpu_basic.c
 endif
+ifeq ($(SMP),1)
+TEST_FILES +=            \
+    xt_mc_demo.c         \
+    xt_smp.c
+ifeq ($(SMP_PSO),1)
+ifeq ($(WINDOWED),1)
+TEST_FILES +=            \
+    xt_smp_pso_test.c
+endif
+endif
+endif
+ifeq ($(HAS_IDMA),1)
+TEST_FILES += xt_idma_fixedbuf.c
+endif
+
+ifeq ($(SMP),1)
+PERLCMD     = print join('_', 0..$(NUM_CORES)-1);
+CORE_NUMS   = $(subst _, ,$(shell perl -e '$(PERLCMD)'))
+endif
 
 EXE         = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.exe,$(TEST_FILES)))
 COMM_OBJS   = $(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES)))
@@ -99,6 +147,7 @@ SRC_FILES   = $(TEST_FILES)
 
 STRESS_O    = \
 	$(addprefix $(BLDDIR)/stress/,$(STRESS_BASE_O)) \
+	$(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES))) \
 	$(addprefix $(BLDDIR)/stress/Common/Minimal/,$(patsubst %.c,%.o,$(STRESS_COMM_C)))
 
 # Search paths
@@ -125,7 +174,7 @@ DFLAGS      = -DXT_BOARD
 LSP         = xtkc705-rt
 endif
 
-# Build with MPU support
+# Build with MPU support requires LSP modifications and additional flags
 ifeq ($(MPU),1)
 LSPPATH     = $(BLDDIR)$(S)lsp$(S)$(LSP)
 MPUFLAGS    = -DportUSING_MPU_WRAPPERS=1 -DportALIGN_SECTIONS
@@ -139,23 +188,47 @@ endif
 
 INCS        = -I$(SRCDIR) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)
 DFLAGS     += -DSTANDALONE
+
 ifeq ($(OVERLAY),1)
-CFLAGS     ?= -Os
+CFLAGS     ?= -Os -g
 else
-CFLAGS     ?= -O2
+CFLAGS     ?= -O2 -g
 endif
-CFLAGS     += -g -Wall -Werror
-CCFLAGS     = $(CFLAGS) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
-XX_CCFLAGS  = $(filter-out -Werror,$(CFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
-VERIF_CFLAGS= -DCONFIG_VERIF
-LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS)
+
+# Avoid LTO due to build issues related to inline assembly
+CFLAGS_F    = $(filter-out -flto,$(CFLAGS))
+
+CCFLAGS     = $(CFLAGS_F) -ffunction-sections -mlongcalls $(DFLAGS) $(MPUFLAGS)
+CCFLAGS    += -Wall -Werror
+ifeq ($(SMP),0)
+ifneq ($(NUM_CORES),1)
+# Disable SMP mode on a multicore config (usually for test/debug purposes)
+CCFLAGS    += -DconfigNUMBER_OF_CORES=1
+endif
+endif
+ifeq ($(filter -O0,$(CFLAGS_F)),-O0)
+OSCFLAGS    = -DXT_CFLAGS_O0
+CCFLAGS    += -DXT_CFLAGS_O0
+endif
+XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
+
+# VERIF options: 1-5 - run various subsets of all stress tests briefly and exit
+#                0   - run all stress tests indefinitely until cancelled by user
+VERIF      ?= 0
+VERIF_CFLAGS= -DCONFIG_VERIF=$(VERIF)
+LDFLAGS    ?= -Wl,--gc-sections $(CFLAGS_F)
+ifeq ($(SMP),1)
+LDFLAGS    += -Wl,--orphan-handling=place
+endif
 
 CFLAGS_mpu_basic = -O0
 CFLAGS_xt_coproc = -O3
+CFLAGS_xt_idma_fixedbuf = -I$(XTTOOLSDIR)/xtensa-elf/src/libidma/examples
+LFLAGS_xt_idma_fixedbuf = -lidma-os
 
 # use make DEBUG=1 to get MPU debug prints
 ifeq ($(DEBUG),1)
-CFLAGS     += -DDEBUG
+CFLAGS_F   += -DDEBUG
 endif
 
 # include dependency rules (generated using -MD)
@@ -166,8 +239,29 @@ endif
 
 all : os $(EXE)
 check : $(addprefix check_,$(notdir $(EXE)))
+
+ifeq ($(SMP),1)
+check_% : $(BLDDIR)/% $(BLDDIR)/subsys
+	xtsc-run \
+--define=SYSTEMRAM_READ_DELAY=1 --define=SYSTEMRAM_WRITE_DELAY=1 \
+$(addsuffix _SIM_STOP_ON_EXIT=true, $(addprefix --define=DSP_,$(CORE_NUMS))) \
+$(addsuffix _BINARY=$<, $(addprefix --define=DSP_,$(CORE_NUMS))) \
+--include=$(BLDDIR)$(S)subsys$(S)xtsc-run$(S)SubSystem.inc \
+--cycle_limit=700000000
+
+# MP subsystem
+$(BLDDIR)/subsys:
+	$(MKPATH) $(BLDDIR)$(S)subsys
+	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)examples$(S)MP_Subsystem$(S)xt_sysbuilder_mp$(S)subsys.yml $(BLDDIR)$(S)subsys$(S)subsys.yml
+	$(XTTOOLSDIR)$(S)libexec$(S)xt-sysbuilder \
+        -xtensa-system ${XTENSA_SYSTEM} \
+        -subsys $(BLDDIR)$(S)subsys$(S)subsys.yml \
+        -swtools $(XTTOOLSDIR)  \
+        -build $(BLDDIR)$(S)subsys
+else
 check_% : $(BLDDIR)/%
 	$(ISS) --exit_with_target_code $<
+endif
 
 # NOTE: The small test needs its own version of the FreeRTOS library.
 # So don't club it with the other tests, it has to be built on its own.
@@ -180,22 +274,23 @@ os : $(OSLIB)
 # MPU minimum alignment, we just use 4K here because that is the max possible.
 
 ifeq ($(HOSTTYPE),win)
-SECT_PRIV := PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
-SECT_ALIGN := ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096
+SECT_DATA_PRIV := PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)
+SECT_TEXT_PRIV := PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)
+SECT_ALIGN := ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096
 endif
 
 ifeq ($(HOSTTYPE),unix)
-SECT_PRIV := "PLACE SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
-SECT_ALIGN := "ALIGN SECTIONS(privileged_data privileged_functions freertos_system_calls private_region1 private_region2 private_region3 private_stack) 4096"
+SECT_DATA_PRIV := "PLACE SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) WITH_SECTION(.data)"
+SECT_TEXT_PRIV := "PLACE SECTIONS(privileged_functions freertos_system_calls) WITH_SECTION(.text)"
+SECT_ALIGN := "ALIGN SECTIONS(privileged_data private_region1 private_region2 private_region3 private_stack) 4096"
 endif
 
 # NOTE: Older xt-genldscripts does not support "ALIGN SECTIONS ..." so attempt to gracefully omit it
 # if it exits with an error
 $(LSPPATH)/.mkdir :
-	$(MKPATH) $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)memmap.xmm $(LSPPATH)
-	$(CP) $(subst /,$(S),$(CONFIGDIR))$(S)xtensa-elf$(S)lib$(S)$(LSP)$(S)specs $(LSPPATH)
-	echo $(SECT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	xt-regenlsps -f -mlsp=$(LSP) -b $(LSPPATH)
+	echo $(SECT_DATA_PRIV) >> $(LSPPATH)$(S)memmap.xmm
+	echo $(SECT_TEXT_PRIV) >> $(LSPPATH)$(S)memmap.xmm
 	$(CP) $(LSPPATH)$(S)memmap.xmm $(LSPPATH)$(S)memmap.xmm.noalign
 	echo $(SECT_ALIGN) >> $(LSPPATH)$(S)memmap.xmm
 	-xt-genldscripts -b $(LSPPATH) > $(LSPPATH)$(S)sect_align.log 2>&1 || $(CP) $(LSPPATH)$(S)memmap.xmm.noalign $(LSPPATH)$(S)memmap.xmm
@@ -213,18 +308,36 @@ $(BLDDIR)/stress/.mkdir : $(BLDDIR)/.mkdir
 	@echo "" > $@
 
 ifeq ($(MPU),1)
-MPULSP = $(LSPPATH)/.mkdir
-lsptest : $(LSPPATH)/.mkdir
+CUSTLSP = $(LSPPATH)/.mkdir
 endif
 
-$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(MPULSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm
+$(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LFLAGS_$*) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
-$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(MPULSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm
+ifneq ($(POWERDOWN),1)
+# Configure test to run in opt-out/opt-in mode without power-down, which
+# requires recompiling xthal_smp_self_shutdown() to remove 'waiti' instruction
+$(BLDDIR)/smp_pso_self.o : $(XTTOOLSDIR)/xtensa-elf/src/hal/not_certified/smp_pso_self.S $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) -DXTHAL_SMP_SELF_SHUTDOWN_TEST_IMM_RETURN=1 -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.o : xt_smp_pso_test.c $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) $(CFLAGS_$*) -DTARGET_XTSC=1 $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.exe : $(BLDDIR)/smp_pso_self.o $(BLDDIR)/xt_smp_pso_test.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
+else
+# Configure test to run in powerdown / resume mode, which requires enabling
+# reset handler code to detect and handle warm boot
+LDFLAGS += -Wl,--defsym=_xthal_smp_pso_enable=1
+endif
+
+
+
+$(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm -lgdbio
 
 $(BLDDIR)/stress/%.o : stress/%.c $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSLIB_VERIF)
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
@@ -236,34 +349,52 @@ $(BLDDIR)/stress/Common/Minimal/%.o : $(COMMDIR)/Minimal/%.c $(BLDDIR)/.mkdir $(
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
 $(OSLIB) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
 
 $(OSLIB_VERIF) ::
-	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU)
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
 
-mpu_basic : $(BLDDIR)/mpu_basic.exe
+mpu_basic :
+	$(MAKE) $(BLDDIR)/mpu_basic.exe
 
-example   : $(BLDDIR)/example.exe
+example   :
+	$(MAKE) $(BLDDIR)/example.exe
 
-timer2   : $(BLDDIR)/timer_test2.exe
+timer2   :
+	$(MAKE) $(BLDDIR)/timer_test2.exe
 
-perf_test : $(BLDDIR)/perf_test.exe
+perf_test :
+	$(MAKE) $(BLDDIR)/perf_test.exe
 
-xt_coproc : $(BLDDIR)/xt_coproc.exe
+xt_coproc :
+	$(MAKE) $(BLDDIR)/xt_coproc.exe
 
-xt_alloca : $(BLDDIR)/xt_alloca.exe
+xt_alloca :
+	$(MAKE) $(BLDDIR)/xt_alloca.exe
 
-xt_clib   : $(BLDDIR)/xt_clib.exe
+xt_clib   :
+	$(MAKE) $(BLDDIR)/xt_clib.exe
 
-xt_intr   : $(BLDDIR)/xt_intr.exe
+xt_idma_fixedbuf   :
+	$(MAKE) $(BLDDIR)/xt_idma_fixedbuf.exe
 
-stress   : $(BLDDIR)/stress/stress.exe
+xt_intr   :
+	$(MAKE) $(BLDDIR)/xt_intr.exe
+
+xt_smp    :
+	$(MAKE) $(BLDDIR)/xt_smp.exe
+
+xt_smp_pso_test    :
+	$(MAKE) $(BLDDIR)/xt_smp_pso_test.exe
+
+stress   :
+	$(MAKE) $(BLDDIR)/stress/stress.exe
 
 # xt_clib uses asm-offsets.h, which is build as a side effect of $(OSLIB)
 $(BLDDIR)/xt_clib.o : $(OSLIB)
 
 small_test : $(BLDDIR)/.mkdir
-	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
+	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS_F) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
 
 
 #------------------------------------------------------------------------------
@@ -278,7 +409,8 @@ $(OVLYLSP) :
 	xt-regenlsps -mlsp=sim -b $@
 	@echo OVERLAYS = 4 >> $@/memmap.xmm
 	@echo OVERLAY_ALIGN = 4096 >> $@/memmap.xmm
-	@echo $(SECT_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_DATA_PRIV) >> $@$(S)memmap.xmm
+	@echo $(SECT_TEXT_PRIV) >> $@$(S)memmap.xmm
 	$(CP) $@$(S)memmap.xmm $@$(S)memmap.xmm.noalign
 	@echo $(SECT_ALIGN) >> $@$(S)memmap.xmm
 	-xt-genldscripts -b $@ > $@$(S)sect_align.log 2>&1 || $(CP) $@$(S)memmap.xmm.noalign $@$(S)memmap.xmm
@@ -307,7 +439,7 @@ clean :
 clean_all :
 	$(RM_R) $(BLDROOT)
 
-.PHONY : all clean clean_all mpu_basic example perf_test xt_coproc xt_alloca xt_clib xt_intr
+.PHONY : all clean clean_all mpu_basic example perf_test xt_coproc xt_alloca xt_clib xt_idma_fixedbuf xt_intr
 
 help :
 	@echo Available options:

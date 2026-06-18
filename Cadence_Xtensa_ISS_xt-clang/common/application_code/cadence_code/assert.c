@@ -1,6 +1,6 @@
 
 //-----------------------------------------------------------------------------
-// Copyright (c) 2003-2024 Cadence Design Systems, Inc.
+// Copyright (c) 2003-2025 Cadence Design Systems, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -23,9 +23,14 @@
 //-----------------------------------------------------------------------------
 
 /* Scheduler include files. */
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+
+#include <xtensa/xtutil.h>
 
 /*-----------------------------------------------------------*/
 
@@ -36,6 +41,13 @@ void vAssertCalled( const char * pcFile,
 
     ( void ) pcFile;
     ( void ) ulLine;
+
+    // For easier debug... all demos are linked with libxtutil
+#if (configNUMBER_OF_CORES == 1)
+    xt_printf("vAssertCalled: %s:%d\n", pcFile, ulLine);
+#else
+    xt_printf("vAssertCalled (core %d): %s:%d\n", portGET_CORE_ID(), pcFile, ulLine);
+#endif
 
     taskENTER_CRITICAL();
     {
@@ -49,3 +61,64 @@ void vAssertCalled( const char * pcFile,
     taskEXIT_CRITICAL();
 }
 /*-----------------------------------------------------------*/
+
+#if (configNUMBER_OF_CORES > 1)
+
+// For SMP tests, include exit handling logic to gracefully stop XTSC
+// instead of allowing idle tasks and timer interrupts to run indefinitely
+//
+// Call exit() only on core 0 and _exit() on other cores.
+
+volatile int test_exit_called = 0;
+volatile int test_exited[configNUMBER_OF_CORES];
+volatile int test_exit_code;
+
+// When called directly, call exit() on core 0 and _exit() on other cores
+void test_exit(int code)
+{
+    int core = portGET_CORE_ID();
+    test_exit_code = code;
+    test_exit_called = 1;
+    if (core > 0) {
+        test_exited[core] = 1;
+        _exit(code);
+    }
+
+    // Wait until all nonzero cores have exited before core 0 calls exit;
+    // cores can get stuck in WAITI if IPIs stop too soon
+    for (int i = 1; i < configNUMBER_OF_CORES; i++) {
+        while (test_exited[i] == 0) {
+            ;
+        }
+    }
+    exit(code);
+}   
+
+// Use idle hook to check if test_exit() was called only on another core;
+// if test is still running, issue a wait-for-interrupt (WAITI) instruction
+// to conserve power
+#if (configUSE_PASSIVE_IDLE_HOOK != 0)
+void vApplicationPassiveIdleHook( void )
+{
+    if (test_exit_called) {
+        test_exit(test_exit_code);
+    }
+    XT_WAITI( 0 );
+}
+#endif  // configUSE_PASSIVE_IDLE_HOOK
+
+#else   // (configNUMBER_OF_CORES == 1)
+
+void test_exit(int code)
+{
+    exit(code);
+}
+
+#if (configUSE_IDLE_HOOK != 0)
+void vApplicationIdleHook( void )
+{
+    XT_WAITI( 0 );
+}
+#endif  // configUSE_IDLE_HOOK
+
+#endif  // (configNUMBER_OF_CORES == 1)
