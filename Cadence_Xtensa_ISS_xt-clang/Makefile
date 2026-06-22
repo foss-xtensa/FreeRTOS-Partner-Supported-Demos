@@ -17,6 +17,7 @@ ISS         = xt-run
 XT_CORE     = $(patsubst %-params,%,$(notdir $(shell xt-clang --show-config=core)))
 CONFIGDIR   = $(shell xt-clang --show-config=config)
 XTTOOLSDIR  = $(shell xt-clang --show-config=xttools)
+XTTOOLSSRC  = $(XTTOOLSDIR)$(S)xtensa-elf$(S)src
 
 # For platform-specific commands
 
@@ -311,30 +312,37 @@ ifeq ($(MPU),1)
 CUSTLSP = $(LSPPATH)/.mkdir
 endif
 
+ifneq ($(POWERDOWN),1)
+# Configure test to run in opt-out/opt-in mode without power-down, which
+# requires defining _xthal_smp_self_shutdown_test_imm_return so that
+# xthal_smp_self_shutdown() avoids issuing the 'waiti' instruction.
+# Older HAL releases require rebuilding one file, which is done if the
+# hook symbol is not found.
+PSO_HOOK     = _xthal_smp_self_shutdown_test_imm_return
+HAS_PSO_HOOK = $(shell $(GREP) $(PSO_HOOK) $(XTTOOLSSRC)$(S)hal$(S)not_certified$(S)smp_pso_self.S)
+
+LFLAGS_xt_smp_pso_test = -Wl,--defsym=$(PSO_HOOK)=1
+CFLAGS_xt_smp_pso_test = -DTARGET_XTSC=1
+
+ifeq ($(HAS_PSO_HOOK),)
+$(BLDDIR)/smp_pso_self.o : $(XTTOOLSSRC)/hal/not_certified/smp_pso_self.S $(BLDDIR)/.mkdir
+	$(CC) $(CCFLAGS) -DXTHAL_SMP_SELF_SHUTDOWN_TEST_IMM_RETURN=1 -c -o $@ $<
+
+$(BLDDIR)/xt_smp_pso_test.exe : $(BLDDIR)/smp_pso_self.o $(BLDDIR)/xt_smp_pso_test.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LFLAGS_$*) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
+endif
+else
+# Configure test to run in powerdown / resume mode, which requires enabling
+# reset handler code to detect and handle warm boot
+LFLAGS_xt_smp_pso_test = -Wl,--defsym=_xthal_smp_pso_enable=1
+endif
+
+
 $(EXE) : $(BLDDIR)/%.exe : $(BLDDIR)/%.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LFLAGS_$*) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
 
 $(OBJS) : $(BLDDIR)/%.o : %.c $(BLDDIR)/.mkdir $(OSLIB)
 	$(CC) $(CCFLAGS) $(CFLAGS_$*) $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
-
-ifneq ($(POWERDOWN),1)
-# Configure test to run in opt-out/opt-in mode without power-down, which
-# requires recompiling xthal_smp_self_shutdown() to remove 'waiti' instruction
-$(BLDDIR)/smp_pso_self.o : $(XTTOOLSDIR)/xtensa-elf/src/hal/not_certified/smp_pso_self.S $(BLDDIR)/.mkdir
-	$(CC) $(CCFLAGS) -DXTHAL_SMP_SELF_SHUTDOWN_TEST_IMM_RETURN=1 -c -o $@ $<
-
-$(BLDDIR)/xt_smp_pso_test.o : xt_smp_pso_test.c $(BLDDIR)/.mkdir
-	$(CC) $(CCFLAGS) $(CFLAGS_$*) -DTARGET_XTSC=1 $(INCS) -MD -MF $(subst .o,.d,$@) -c -o $@ $<
-
-$(BLDDIR)/xt_smp_pso_test.exe : $(BLDDIR)/smp_pso_self.o $(BLDDIR)/xt_smp_pso_test.o $(COMM_OBJS) $(OSLIB) $(CUSTLSP)
-	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB) -lxtutil -lm -lgdbio
-else
-# Configure test to run in powerdown / resume mode, which requires enabling
-# reset handler code to detect and handle warm boot
-LDFLAGS += -Wl,--defsym=_xthal_smp_pso_enable=1
-endif
-
-
 
 $(BLDDIR)/stress/stress.exe : $(STRESS_O) $(OSLIB_VERIF) $(CUSTLSP)
 	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_VERIF) -lxtutil -lm -lgdbio
