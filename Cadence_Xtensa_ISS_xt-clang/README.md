@@ -151,7 +151,7 @@ Notes for version 3.11
 ----------------------
 
 - Xtensa FreeRTOS SMP port only calls main() on core 0.  Non-zero cores
-  enter the scheduler direclty.  Example tests modified accordingly.
+  enter the scheduler directly.  Example tests modified accordingly.
 - Xtensa FreeRTOS SMP port now supports configurations without DRAM.
 - Xtensa FreeRTOS SMP port no longer requires non-zero cores to be
   held in RunStall upon startup.
