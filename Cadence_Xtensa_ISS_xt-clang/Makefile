@@ -151,6 +151,10 @@ STRESS_O    = \
 	$(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES))) \
 	$(addprefix $(BLDDIR)/stress/Common/Minimal/,$(patsubst %.c,%.o,$(STRESS_COMM_C)))
 
+SMALL_O     = \
+	$(BLDDIR)/small/small_test.o \
+	$(addprefix $(BLDDIR)/,$(patsubst %.c,%.o,$(COMM_FILES)))
+
 # Search paths
 
 vpath %.c $(SRCDIR)
@@ -159,6 +163,7 @@ vpath %.c $(SRCDIR)
 
 OSLIB       = $(BLDDIR)$(S)libfreertos.a
 OSLIB_VERIF = $(BLDDIR)$(S)stress$(S)libfreertos.a
+OSLIB_SMALL = $(BLDDIR)$(S)small$(S)libfreertos.a
 
 # Target-specific options
 
@@ -223,6 +228,7 @@ LDFLAGS    += -Wl,--orphan-handling=place
 endif
 
 CFLAGS_mpu_basic = -O0
+CFLAGS_small_test= -DXT_USE_THREAD_SAFE_CLIB=0 -DSMALL_TEST
 CFLAGS_xt_coproc = -O3
 CFLAGS_xt_idma_fixedbuf = -I$(XTTOOLSDIR)/xtensa-elf/src/libidma/examples
 LFLAGS_xt_idma_fixedbuf = -lidma-os
@@ -302,6 +308,12 @@ $(BLDDIR)/.mkdir :
 	@$(MKPATH) $(BLDDIR)
 	@echo "" > $@
 
+$(BLDDIR)/small/.mkdir : $(BLDDIR)/.mkdir
+	@$(MKPATH) $(BLDDIR)$(S)small
+	@$(MKPATH) $(BLDDIR)$(S)small$(S)Common
+	@$(MKPATH) $(BLDDIR)$(S)small$(S)Common$(S)Minimal
+	@echo "" > $@
+
 $(BLDDIR)/stress/.mkdir : $(BLDDIR)/.mkdir
 	@$(MKPATH) $(BLDDIR)$(S)stress
 	@$(MKPATH) $(BLDDIR)$(S)stress$(S)Common
@@ -356,8 +368,17 @@ $(BLDDIR)/stress/%.o : stress/%.S $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSL
 $(BLDDIR)/stress/Common/Minimal/%.o : $(COMMDIR)/Minimal/%.c $(BLDDIR)/.mkdir $(BLDDIR)/stress/.mkdir $(OSLIB_VERIF)
 	$(CC) $(XX_CCFLAGS) $(VERIF_CFLAGS) $(CFLAGS_$*) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)stress -I$(COMMINCDIR) -Istress -MD -MF $(subst .o,.d,$@) -c -o $@ $<
 
+$(BLDDIR)/small/small.exe : $(SMALL_O) $(OSLIB_SMALL) $(CUSTLSP)
+	$(CC) -o $@ $(filter %.o,$^) -mlsp=$(LSPPATH) $(LDFLAGS) $(OSLIB_SMALL) $(CFLAGS_small_test)
+
+$(BLDDIR)/small/small_test.o : small_test.c $(BLDDIR)/.mkdir $(BLDDIR)/small/.mkdir $(OSLIB_SMALL)
+	$(CC) $(XX_CCFLAGS) $(CFLAGS_small_test) -I$(CFGDIR) -I$(OSROOT) -I$(OSINCDIR) -I$(OSINCDIR)$(S)private -I$(BLDDIR)$(S)small -I$(COMMINCDIR) -Ismall -MD -MF $(subst .o,.d,$@) -c -o $@ $<
+
 $(OSLIB) ::
 	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) MPU=$(MPU) SMP=$(SMP)
+
+$(OSLIB_SMALL) ::
+	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS) $(CFLAGS_small_test)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)small" MPU=$(MPU) SMP=$(SMP)
 
 $(OSLIB_VERIF) ::
 	$(MAKE) -f $(OSROOT)$(S)Makefile all TARGET=$(TARGET) CFLAGS="$(CFLAGS_F) $(OSCFLAGS) $(VERIF_CFLAGS)" SRCROOT=$(OSROOT) BLDROOT=$(BLDROOT) BLDAUX="$(S)stress" MPU=$(MPU) SMP=$(SMP)
@@ -401,8 +422,8 @@ stress   :
 # xt_clib uses asm-offsets.h, which is build as a side effect of $(OSLIB)
 $(BLDDIR)/xt_clib.o : $(OSLIB)
 
-small_test : $(BLDDIR)/.mkdir
-	$(MAKE) --no-print-directory $(BLDDIR)/small_test.exe CFLAGS="$(CFLAGS_F) -DSMALL_TEST -DXT_USE_THREAD_SAFE_CLIB=0"
+small_test : $(BLDDIR)/small/.mkdir
+	$(MAKE) --no-print-directory $(BLDDIR)/small/small.exe CFLAGS="$(CFLAGS_F) $(CFLAGS_small_test)"
 
 
 #------------------------------------------------------------------------------

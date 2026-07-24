@@ -33,10 +33,12 @@
 #include "semphr.h"
 #include "event_groups.h"
 #include "queue.h"
+#include "xtensa_api.h"
 
 
-#define TEST_ITER  500
-#define PERF_TEST_PRIORITY      5  // Priorities will vary between 2 and 7
+#define TEST_ITER                   500
+#define PERF_TEST_PRIORITY          5  // Priorities will vary between 2 and 7
+#define OVERHEAD_MEASUREMENT_RPT	10
 
 #if ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 0 )
 #error configUSE_CORE_AFFINITY required for this test in SMP mode
@@ -818,6 +820,181 @@ void msgq_test(void* arg)
 }
 
 
+stats_t isr_stats;
+volatile uint32_t sw_isr_end_cycle;
+uint32_t sw_isr_tick_count;
+
+void
+softwareIntHandler(void * arg)
+{
+    sw_isr_end_cycle = xthal_get_ccount();
+}
+
+//-----------------------------------------------------------------------------
+// ISR test - runs in main thread. Trigger an interrupt and return to either
+// the main thread or a different thread. Then compute the average and worst
+// case switch times.
+//-----------------------------------------------------------------------------
+void isrTest(uint32_t low_pri)
+{
+#if XCHAL_HAVE_XEA3
+    int32_t rtos_int_found = 0;
+#endif
+    uint32_t oh_sum = 0;
+    uint32_t oh_cycles;
+    uint32_t sw_int_num;
+    int32_t i;
+
+    // Find one sw interrupt <= XCHAL_EXCM_LEVEL
+    for (i = 0; i < XCHAL_NUM_INTERRUPTS; i++) {
+        uint32_t lvl = Xthal_intlevel[i];
+        if ((Xthal_inttype[i] == XTHAL_INTTYPE_SOFTWARE) &&
+            (((low_pri != 0) && (lvl == 1)) ||
+             ((low_pri == 0) && ((lvl > 1) && (lvl <= XCHAL_EXCM_LEVEL))))) {
+#if XCHAL_HAVE_XEA3
+            if (!rtos_int_found) {
+                printf("Reserve interrupt %d for RTOS\n", i);
+                rtos_int_found = 1;
+                continue;
+            }
+#endif
+            printf("[Using interrupt %d / level %d]\n", i, lvl);
+            break;
+        }
+    }
+
+    if (i == XCHAL_NUM_INTERRUPTS) {
+        printf("No software interrupt found; skipping test.\n");
+        return;
+    }
+
+    // Set up interrupt handler
+    sw_int_num = (uint32_t)i;
+    xt_set_interrupt_handler(sw_int_num, softwareIntHandler, NULL);
+
+    sw_isr_tick_count = xTaskGetTickCount();
+    while (xTaskGetTickCount() == sw_isr_tick_count) {
+        // Wait for next timer interrupt to get processed
+    }
+
+    // Measure overhead of triggering interrupt before we enable it
+    for (i = 0; i < OVERHEAD_MEASUREMENT_RPT; i++) {
+        uint32_t start = xthal_get_ccount();
+        volatile uint32_t end;
+        xt_interrupt_trigger(sw_int_num);
+        end = xthal_get_ccount();
+        if (i > 0) {
+            /* skip first measurement for caching */
+            oh_sum += end - start;
+        }
+    }
+    oh_cycles = oh_sum / (OVERHEAD_MEASUREMENT_RPT - 1);
+
+    // Compute average values for interrupt return latency
+    stats_reset(&isr_stats);
+
+    xt_interrupt_enable(sw_int_num);
+    for (i = 0; i < TEST_ITER; i++) {
+        uint32_t delta;
+        volatile uint32_t end;
+        sw_isr_tick_count = xTaskGetTickCount();
+        xt_interrupt_trigger(sw_int_num);
+        end = xthal_get_ccount();
+        if ((i < 3) || (xTaskGetTickCount() != sw_isr_tick_count)) {
+            continue;
+        }
+        delta = end - sw_isr_end_cycle;
+        stats_update(&isr_stats, (int)delta);
+    }
+    xt_interrupt_disable(sw_int_num);
+
+    if (printStats) {
+        printf("ISR return to original thread : min %u avg %u max %u cycles [calibration %d]\n",
+                isr_stats.min,
+                (isr_stats.sum / isr_stats.cnt),
+                isr_stats.max,
+                oh_cycles);
+    }
+}
+
+void *malloc_mem;
+
+//-----------------------------------------------------------------------------
+// malloc/free test - runs in main thread. Compute the average and worst
+// case switch times.
+//-----------------------------------------------------------------------------
+void mallocTest(void)
+{
+    uint32_t oh_cycles;
+    uint32_t size;
+    uint32_t i;
+
+    printf("\nMalloc timing test"
+           "\n-----------------\n");
+
+    // Measure the overhead of updating the cycle count
+
+    register uint32_t state0 = portENTER_CRITICAL_NESTED();
+
+    for (i = 0; i < OVERHEAD_MEASUREMENT_RPT; i++) {
+        // Copied from yield_func to calibrate timing
+        uint32_t state = portENTER_CRITICAL_NESTED();
+        clock_vals[indx++] = xthal_get_ccount();
+        portEXIT_CRITICAL_NESTED(state);
+    }
+
+    portEXIT_CRITICAL_NESTED(state0);
+
+    oh_cycles = (clock_vals[indx-1] - clock_vals[indx-OVERHEAD_MEASUREMENT_RPT]) / (OVERHEAD_MEASUREMENT_RPT -1);
+    indx = 0;
+
+    for (size = 1024; size <= 1024 * 1024; size *= 4) {
+        // Compute average values for malloc
+        stats_t malloc_stats;
+        stats_reset(&malloc_stats);
+        stats_t free_stats;
+        stats_reset(&free_stats);
+
+        for (i = 0; i < TEST_ITER; i++) {
+            uint32_t delta;
+            volatile uint32_t mstart, mend;
+            volatile uint32_t fstart, fend;
+            sw_isr_tick_count = xTaskGetTickCount();
+            mstart = xthal_get_ccount();
+            malloc_mem = malloc(size);
+            mend = xthal_get_ccount();
+            fstart = xthal_get_ccount();
+            free(malloc_mem);
+            fend = xthal_get_ccount();
+            if ((i < 3) || (xTaskGetTickCount() != sw_isr_tick_count)) {
+                continue;
+            }
+            delta = mend - mstart - oh_cycles;
+            stats_update(&malloc_stats, (int)delta);
+            delta = fend - fstart - oh_cycles;
+            stats_update(&free_stats, (int)delta);
+        }
+
+        if (printStats) {
+            printf("malloc(%d) time : min %u avg %u max %u cycles [calibration %d]\n",
+                    size,
+                    malloc_stats.min,
+                    (malloc_stats.sum / malloc_stats.cnt),
+                    malloc_stats.max,
+                    oh_cycles);
+            printf("free() time : min %u avg %u max %u cycles [calibration %d]\n",
+                    free_stats.min,
+                    (free_stats.sum / free_stats.cnt),
+                    free_stats.max,
+                    oh_cycles);
+        }
+    }
+
+    portbenchmarkIntWait();
+    portbenchmarkPrint();
+}
+
+
 //-----------------------------------------------------------------------------
 // Yield test - runs in main thread. Start 3 threads to measure the context
 // switch time. Wait for them all to exit. Then compute the average and worst
@@ -825,7 +1002,6 @@ void msgq_test(void* arg)
 //-----------------------------------------------------------------------------
 void yieldTest(void)
 {
-#define OVERHEAD_MEASUREMENT_RPT	10
     uint32_t oh_cycles;
     uint32_t i;
 
@@ -1052,6 +1228,13 @@ void test(void* pArg)
        The idle task frees up memory from deleted tasks and makes that
        memory available to the next test.
      */
+    printf("\nISR timing test"
+           "\n---------------\n");
+    isrTest(1);
+    isrTest(0);
+    vTaskDelay(1);
+    mallocTest();
+    vTaskDelay(1);
     yieldTest();
     vTaskDelay(1);
     unsolicitedTest();
