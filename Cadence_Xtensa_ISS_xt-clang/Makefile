@@ -218,6 +218,12 @@ CCFLAGS    += -DXT_CFLAGS_O0
 endif
 XX_CCFLAGS  = $(filter-out -Werror,$(CCFLAGS)) -ffunction-sections -mlongcalls $(DFLAGS)
 
+ifeq ($(SMP),1)
+# Uncomment to use L2RAM for shared / privileged data on SMP configs
+# (may be subsequently disabled in xtensa_config.h if L2RAM is unavailable)
+# OSCFLAGS   += -DXT_USE_L2RAM=1
+endif
+
 # VERIF options: 1-5 - run various subsets of all stress tests briefly and exit
 #                0   - run all stress tests indefinitely until cancelled by user
 VERIF      ?= 0
